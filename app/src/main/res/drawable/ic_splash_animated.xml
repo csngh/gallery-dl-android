@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_splash_art">
+    <target
+        android:name="cards"
+        android:animation="@animator/splash_cards_pop" />
+    <target
+        android:name="badge"
+        android:animation="@animator/splash_badge_drop" />
+</animated-vector>

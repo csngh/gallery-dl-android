@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:translateX="-3.5" android:translateY="-2">
+        <group
+            android:name="cards"
+            android:pivotX="52"
+            android:pivotY="50">
+            <path
+                android:fillAlpha="0.45"
+                android:fillColor="#FFFFFF"
+                android:pathData="M43,27h30a5,5 0 0 1 5,5v30a5,5 0 0 1 -5,5h-30a5,5 0 0 1 -5,-5v-30a5,5 0 0 1 5,-5z" />
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M37,34h30a5,5 0 0 1 5,5v30a5,5 0 0 1 -5,5h-30a5,5 0 0 1 -5,-5v-30a5,5 0 0 1 5,-5z" />
+            <path
+                android:fillColor="#2B2F77"
+                android:pathData="M35,71V67.5L43,57L49.5,64.5L56,55L69,68.5V71z" />
+            <path
+                android:fillColor="#0E8F9A"
+                android:pathData="M63,39.5m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0z" />
+        </group>
+        <group android:name="badge">
+            <path
+                android:fillColor="#0B1020"
+                android:pathData="M71,73m-12.5,0a12.5,12.5 0 1 0 25,0a12.5,12.5 0 1 0 -25,0z" />
+            <path
+                android:fillColor="#2EE6C9"
+                android:pathData="M71,73m-10.5,0a10.5,10.5 0 1 0 21,0a10.5,10.5 0 1 0 -21,0z" />
+            <path
+                android:fillColor="#0B1020"
+                android:pathData="M69.6,66.5h2.8v7h-2.8z" />
+            <path
+                android:fillColor="#0B1020"
+                android:pathData="M64.8,72.8h12.4L71,79.5z" />
+        </group>
+    </group>
+</vector>

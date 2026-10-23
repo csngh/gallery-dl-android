@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gallery DL Android</string>
+
+    <string name="nav_queue">Queue</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_activity">Activity</string>
+    <string name="nav_home">Home</string>
+
+    <string name="url_label">Paste a link</string>
+    <string name="action_add">Add</string>
+    <string name="error_url_malformed">Please enter a valid http or https link.</string>
+    <string name="error_url_unsupported">This website is not supported.</string>
+
+    <string name="status_queued">Queued</string>
+    <string name="status_downloading">Downloading</string>
+    <string name="status_completed">Completed</string>
+    <string name="status_failed">Failed</string>
+    <string name="status_cancelled">Cancelled</string>
+    <string name="status_partial">Completed with errors</string>
+    <plurals name="files_saved">
+        <item quantity="one">%d file saved</item>
+        <item quantity="other">%d files saved</item>
+    </plurals>
+    <plurals name="files_failed">
+        <item quantity="one">%d file failed</item>
+        <item quantity="other">%d files failed</item>
+    </plurals>
+    <string name="partial_errors">Some files could not be downloaded.</string>
+    <string name="error_destination_unavailable">Unable to access the download folder. Please choose a folder again in Download location.</string>
+    <string name="error_no_files">Unable to download any files from this link.</string>
+
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_clear_finished">Clear finished</string>
+
+    <string name="queue_empty_title">The queue is empty</string>
+    <string name="queue_empty_body">Please paste a link above to start downloading.</string>
+
+    <string name="no_app_to_open">Unable to find an app that can open this file.</string>
+
+    <string name="download_location">Download location</string>
+    <string name="download_location_default">Default: Pictures, Movies, Music or Downloads, inside a \"GalleryDl\" folder</string>
+    <string name="download_location_hint">Each link is saved in its own subfolder.</string>
+    <string name="action_choose_folder">Choose folder</string>
+    <string name="action_use_default">Use default</string>
+    <string name="action_close">Close</string>
+
+    <string name="library_empty_title">Your library is empty</string>
+    <string name="library_empty_body">Finished downloads appear here, with one folder for each link.</string>
+    <string name="library_no_results">No results found</string>
+    <string name="library_no_results_body">Please try a different search term.</string>
+    <string name="search_label">Search</string>
+    <string name="action_back">Back</string>
+    <string name="action_open">Open</string>
+    <string name="action_delete">Delete</string>
+    <plurals name="folder_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+    <string name="selected_count">%d selected</string>
+    <string name="delete_folder_title">Delete this folder?</string>
+    <plurals name="delete_folder_message">
+        <item quantity="one">This will permanently delete %d file saved from this link from your phone.</item>
+        <item quantity="other">This will permanently delete all %d files saved from this link from your phone.</item>
+    </plurals>
+    <string name="delete_selected_title">Delete the selected items?</string>
+    <plurals name="delete_selected_message">
+        <item quantity="one">This will permanently delete %d file from your phone.</item>
+        <item quantity="other">This will permanently delete %d files from your phone.</item>
+    </plurals>
+
+    <string name="stat_links">Links</string>
+    <string name="stat_completed">Completed</string>
+    <string name="stat_partial">Partial</string>
+    <string name="stat_failed">Failed</string>
+    <string name="stat_files_saved">Files saved</string>
+    <string name="stat_files_failed">Files failed</string>
+    <string name="filter_all">All</string>
+    <string name="action_retry_failed">Retry failed (%d)</string>
+    <string name="activity_empty_title">No activity yet</string>
+    <string name="activity_empty_body">Results for every link that you download will appear here.</string>
+
+    <string name="action_expand">Expand</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="detail_folder">Folder</string>
+    <string name="detail_added">Added</string>
+    <string name="detail_finished">Finished</string>
+
+    <string name="progress_percent">%d%%</string>
+    <string name="progress_file_of">File %1$d of %2$d</string>
+    <string name="progress_file">File %d</string>
+
+    <string name="confirm_question">Do you want to continue?</string>
+    <string name="delete_item_title">Delete this file?</string>
+    <string name="delete_item_message">This will permanently delete this file from your phone.</string>
+    <string name="clear_finished_title">Clear the finished links?</string>
+    <string name="clear_finished_message">This will remove all finished links from the queue and from the activity history. The downloaded files will remain in your library.</string>
+    <string name="action_clear">Clear</string>
+    <string name="remove_link_title">Remove this link?</string>
+    <string name="remove_link_message">This will remove this link from the queue and from the activity history. The downloaded files will remain in your library.</string>
+    <string name="cancel_download_title">Cancel this download?</string>
+    <string name="cancel_download_message">This will stop the download of this link. Files that have already been saved will remain in your library.</string>
+    <string name="action_cancel_download">Cancel download</string>
+    <string name="action_keep_downloading">Keep downloading</string>
+
+    <string name="library_select_title">Select a folder</string>
+    <string name="library_select_body">Please choose a folder on the left to see its files.</string>
+
+    <string name="action_more">More options</string>
+
+    <string name="home_empty_title">No websites yet</string>
+    <string name="home_empty_body">Please paste a link above. Links from the same website are grouped here.</string>
+    <plurals name="site_links">
+        <item quantity="one">%d link</item>
+        <item quantity="other">%d links</item>
+    </plurals>
+    <string name="site_in_progress">%d in progress</string>
+    <plurals name="site_attention">
+        <item quantity="one">%d needs attention</item>
+        <item quantity="other">%d need attention</item>
+    </plurals>
+    <string name="site_downloading_percent">Downloading, %d%%</string>
+
+    <string name="action_edit">Edit link</string>
+    <string name="edit_link_title">Edit link</string>
+    <string name="edit_link_label">Link</string>
+    <string name="action_save_retry">Save and retry</string>
+
+    <string name="action_view_link">View full link</string>
+    <string name="full_link_title">Full link</string>
+    <string name="action_copy">Copy</string>
+    <string name="link_copied">Link copied</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_pacing_title">Pacing</string>
+    <string name="settings_pacing_body">Slow downloads down so that websites are less likely to block you.</string>
+    <string name="option_sleep_request_title">Wait between requests</string>
+    <string name="option_sleep_request_body">Pause between requests to a website. Enter seconds as one number or as a range, for example 4.0-8.0.</string>
+    <string name="option_sleep_title">Wait between downloads</string>
+    <string name="option_sleep_body">Pause before each file is downloaded. Enter seconds as one number or as a range, for example 1.0-3.0.</string>
+    <string name="option_seconds_label">Seconds</string>
+    <string name="error_duration">Please enter seconds from 0 to 300, as one number or a range such as 4.0-8.0.</string>
+    <string name="settings_sites_title">Websites</string>
+    <string name="settings_sites_body">Choices that only some websites offer.</string>
+    <string name="option_api_rest_title">Use the REST API</string>
+    <string name="option_api_rest_body">Asks websites that offer more than one API to use the REST API. Only some websites, such as Twitter, give this choice.</string>
+    <string name="settings_apply_note">Changes apply to the next download that starts.</string>
+
+    <string name="settings_location_title">Download location</string>
+    <string name="settings_location_body">Where finished files are saved on your phone.</string>
+    <string name="settings_connection_title">Connection</string>
+    <string name="settings_connection_body">How downloads behave on slow or limited connections.</string>
+    <string name="option_wifi_title">Wi-Fi only</string>
+    <string name="option_wifi_body">Wait for Wi-Fi and never use mobile data. Downloads in the queue start when Wi-Fi is available.</string>
+    <string name="option_retries_title">Retries</string>
+    <string name="option_retries_body">How many times a file is tried again after it fails. The default is 4.</string>
+    <string name="option_retries_label">Number of retries</string>
+    <string name="error_retries">Please enter a whole number from 0 to 20.</string>
+    <string name="option_timeout_title">Timeout</string>
+    <string name="option_timeout_body">How many seconds to wait for a slow server before giving up. The default is 30.</string>
+    <string name="error_timeout">Please enter seconds from 1 to 300.</string>
+    <string name="option_skip_title">Skip files already downloaded</string>
+    <string name="option_skip_body">When this is off, every file is downloaded again even if it was saved before, which can create duplicates.</string>
+    <string name="settings_accounts_title">Accounts</string>
+    <string name="settings_accounts_body">Download content that needs you to be signed in.</string>
+    <string name="option_cookies_title">Use cookies</string>
+    <string name="option_cookies_body">Sends your cookies.txt to websites so that you appear signed in. Export the file from a desktop browser and import it here.</string>
+    <string name="cookies_none">No cookies.txt has been imported.</string>
+    <plurals name="cookies_imported">
+        <item quantity="one">cookies.txt imported with %d cookie.</item>
+        <item quantity="other">cookies.txt imported with %d cookies.</item>
+    </plurals>
+    <string name="error_cookies_invalid">Unable to read this file. Please choose a cookies.txt file in the Netscape format.</string>
+    <string name="action_import_file">Import file</string>
+    <string name="action_replace_file">Replace file</string>
+    <string name="remove_cookies_title">Remove the cookies?</string>
+    <string name="remove_cookies_message">This will delete the imported cookies.txt from the app. You will need to import it again to download content that needs a sign-in.</string>
+    <string name="settings_storage_title">Storage and reset</string>
+    <string name="settings_storage_body">Manage what the app keeps on your phone.</string>
+    <string name="storage_records">The app\'s records use %s.</string>
+    <string name="action_clear_history">Clear finished history</string>
+    <string name="action_reset_settings">Reset settings</string>
+    <string name="reset_settings_title">Reset all settings?</string>
+    <string name="reset_settings_message">This will return every option and the download location to its default. Your imported cookies, downloaded files and history will not be changed.</string>
+    <string name="action_reset">Reset</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_body">Versions and licences.</string>
+    <string name="about_app_version">App version</string>
+    <string name="about_gallery_dl_version">gallery-dl version</string>
+    <string name="about_licences">Open-source software used: gallery-dl (GPL-2.0), Chaquopy (MIT), Coil, AndroidX and Jetpack Compose (Apache-2.0), and the Inter typeface (SIL Open Font License 1.1).</string>
+
+    <string name="share_title">Add to Gallery DL Android</string>
+    <string name="share_checking">Checking the link.</string>
+    <string name="share_no_link">No link was found in what you shared. Please share a link that starts with http or https.</string>
+    <string name="share_added">Added. Please press Start in the app to download it.</string>
+    <string name="action_add_queue">Add</string>
+
+    <string name="status_ready">Ready to start</string>
+    <string name="action_start">Start</string>
+    <string name="action_start_all">Start all (%d)</string>
+    <string name="action_save">Save</string>
+    <plurals name="site_ready">
+        <item quantity="one">%d ready to start</item>
+        <item quantity="other">%d ready to start</item>
+    </plurals>
+
+    <string name="option_startup_sound_title">Startup sound</string>
+    <string name="option_startup_sound_body">Plays a short sound while the logo appears when the app opens. It stays silent when your phone is on silent or vibrate.</string>
+    <string name="settings_appearance_title">Startup</string>
+    <string name="settings_appearance_body">What happens when the app opens.</string>
+
+    <string name="channel_progress">Downloads in progress</string>
+    <string name="channel_progress_description">Shows the download that is running, with its progress.</string>
+    <string name="channel_results">Finished downloads</string>
+    <string name="channel_results_description">Tells you when a link has been downloaded or has failed.</string>
+    <string name="notif_starting">Starting the download</string>
+    <string name="notif_file_of">File %1$d of %2$d</string>
+    <string name="notif_file">File %d</string>
+    <plurals name="notif_waiting">
+        <item quantity="one">%d more link waiting</item>
+        <item quantity="other">%d more links waiting</item>
+    </plurals>
+    <string name="notif_complete">Download complete</string>
+    <string name="notif_partial">Download complete with errors</string>
+    <string name="notif_failed">Download failed</string>
+</resources>
