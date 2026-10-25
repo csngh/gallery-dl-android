@@ -25,6 +25,13 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
     private val container = (context.applicationContext as GalleryDlApp).container
     private val notifications = DownloadNotifications(context)
+    private var stoppedForStorage = false
+
+    private fun pauseForStorage() {
+        stoppedForStorage = true
+        container.storageMonitor.pausedForStorage = true
+        runCatching { notifications.storageFull(container.storageMonitor.usedPercent.value) }
+    }
 
     override suspend fun doWork(): Result {
         val tasks = container.database.taskDao()
@@ -32,10 +39,15 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         // Foreground promotion can be refused when the worker starts in the background; downloading still works.
         runCatching { setForeground(notifications.starting()) }
 
+        val storage = container.storageMonitor
         while (currentCoroutineContext().isActive) {
             val task = tasks.nextQueued() ?: break
+            // Nothing new starts while the storage is almost full; the queue is kept and carries on when there is room.
+            if (storage.refresh()) { pauseForStorage(); break }
             process(task)
+            if (stoppedForStorage) break
         }
+        if (!stoppedForStorage) notifications.clearStorageFull()
         return Result.success()
     }
 
@@ -64,13 +76,21 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
         var importError: String? = null
         var importFailures = 0
+        var storageStop = false
+        var lastStorageCheck = 0L
         val listener = object : DownloadListener {
-            override fun isCancelled() = coroutineJob.isCancelled || registry.isRequested(task.id)
+            override fun isCancelled() = coroutineJob.isCancelled || registry.isRequested(task.id) || storageStop
 
             private var lastNotified = 0L
             private var lastIndex = -1
 
             override fun onProgress(index: Int, count: Int, percent: Int, fileName: String) {
+                // Looked at every couple of seconds: a download that fills the storage is stopped instead of failing.
+                val checked = System.currentTimeMillis()
+                if (checked - lastStorageCheck >= STORAGE_CHECK_MS) {
+                    lastStorageCheck = checked
+                    if (container.storageMonitor.refresh()) storageStop = true
+                }
                 // Called a few times per second at most; a failed progress write must never stop a download.
                 runBlocking(Dispatchers.IO) {
                     runCatching { tasks.updateProgress(task.id, index, count, percent, fileName) }
@@ -110,6 +130,13 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         registry.clear(task.id)
         outDir.deleteRecursively()
 
+        if (!userCancelled && storageStop) {
+            // The storage filled up while this link was downloading. It goes back to the queue; the archive makes the
+            // run that follows skip the files that were already saved.
+            withContext(NonCancellable) { tasks.pause(task.id) }
+            pauseForStorage()
+            return
+        }
         if (!userCancelled && coroutineJob.isCancelled) {
             // The system stopped the worker (network lost, ...). Keep the task queued; the archive makes
             // the resumed run skip the files that were already saved.
@@ -181,6 +208,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
     companion object {
         const val UNIQUE_NAME = "download-queue"
         private const val NOTIFICATION_INTERVAL_MS = 1_000L
+        private const val STORAGE_CHECK_MS = 2_000L
         private const val MAX_ERROR_CHARS = 2_000
     }
 }

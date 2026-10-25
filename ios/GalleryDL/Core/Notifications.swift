@@ -22,6 +22,10 @@ enum Notifications {
         post(id: "paused", title: S.notifPausedTitle, body: S.notifPausedBody(waiting), subtitle: nil)
     }
 
+    static func storageFull(percent: Int) {
+        post(id: "storage", title: S.notifStorageTitle, body: S.notifStorageBody(percent), subtitle: nil)
+    }
+
     private static func post(id: String, title: String, body: String, subtitle: String?) {
         let content = UNMutableNotificationContent()
         content.title = title

@@ -2,7 +2,8 @@ package app.gallerydl.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
@@ -18,6 +19,7 @@ import app.gallerydl.data.PreviewStripCache
 import app.gallerydl.ui.theme.Spacing
 
 /** A slim bar that shows while preview clips are being made: "Preparing previews, 12 of 40". */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PreviewProgressBanner(cache: PreviewStripCache) {
     val progress by cache.progress.collectAsStateWithLifecycle()
@@ -27,9 +29,15 @@ fun PreviewProgressBanner(cache: PreviewStripCache) {
         Modifier.fillMaxWidth().padding(horizontal = Spacing.Md, vertical = Spacing.Xs),
         verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(stringResource(R.string.previews_preparing), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(stringResource(R.string.previews_progress, done, progress.total), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Side by side when there is room; in a narrow pane (the folder list of a wide screen) the count drops below the
+        // title instead of both being squeezed into single letters per line.
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+        ) {
+            Text(stringResource(R.string.previews_preparing), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = false)
+            Text(stringResource(R.string.previews_progress, done, progress.total), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = false)
         }
         LinearProgressIndicator(progress = { done.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
     }

@@ -15,6 +15,8 @@ import app.gallerydl.download.UrlValidator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -42,6 +44,7 @@ class AppContainer(context: Context) {
     val livePreviews: StateFlow<Boolean> = settingsRepository.livePreviews.stateIn(appScope, SharingStarted.Eagerly, true)
     val cookiesCount: StateFlow<Int> = settingsRepository.cookiesCount.stateIn(appScope, SharingStarted.Eagerly, 0)
     val urlValidator = UrlValidator(pythonBridge)
+    val storageMonitor = app.gallerydl.data.StorageMonitor(context)
     val thumbnailCache = app.gallerydl.data.ThumbnailCache(context)
     val previewStripCache = app.gallerydl.data.PreviewStripCache(context)
     val libraryRepository = LibraryRepository(database.libraryDao(), context.contentResolver, thumbnailCache, previewStripCache)
@@ -53,6 +56,24 @@ class AppContainer(context: Context) {
             File(context.filesDir, "archives"),
             settingsRepository,
         )
+
+    init {
+        // Looks at the storage every so often while the app runs, and starts paused downloads again once there is room.
+        appScope.launch {
+            while (true) {
+                val full = storageMonitor.refresh()
+                if (!full && storageMonitor.pausedForStorage) {
+                    storageMonitor.pausedForStorage = false
+                    downloadRepository.resume()
+                }
+                delay(STORAGE_CHECK_MS)
+            }
+        }
+    }
+
+    private companion object {
+        const val STORAGE_CHECK_MS = 15_000L
+    }
 }
 
 class GalleryDlApp : Application() {

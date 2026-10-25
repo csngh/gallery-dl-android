@@ -256,6 +256,9 @@
     <string name="channel_progress_description">Shows the download that is running, with its progress.</string>
     <string name="channel_results">Finished downloads</string>
     <string name="channel_results_description">Tells you when a link has been downloaded or has failed.</string>
+    <string name="notif_storage_full">Downloads paused: storage almost full</string>
+    <string name="notif_storage_full_body">The storage is %d%% full. Free some space and downloads carry on by themselves.</string>
+    <string name="storage_warning">Storage is almost full (%d%%). Downloads are paused until some space is freed.</string>
     <string name="notif_previews">Preparing previews</string>
     <string name="notif_previews_progress">%1$d of %2$d</string>
     <string name="notif_starting">Starting the download</string>

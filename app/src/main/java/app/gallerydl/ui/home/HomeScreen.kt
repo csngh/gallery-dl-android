@@ -69,6 +69,7 @@ import app.gallerydl.ui.components.EmptyState
 import app.gallerydl.ui.components.IconTile
 import app.gallerydl.ui.components.LinkActionsMenu
 import app.gallerydl.ui.components.LinkField
+import app.gallerydl.ui.components.StorageWarningBanner
 import app.gallerydl.ui.components.PendingAction
 import app.gallerydl.ui.components.PendingActionDialog
 import app.gallerydl.ui.components.ShimmerCardList
@@ -135,6 +136,7 @@ fun HomeScreen(
                 }
             },
         )
+        StorageWarningBanner(Modifier.padding(horizontal = Spacing.Md))
         LinkField(
             state = input,
             onTextChange = viewModel::onTextChange,

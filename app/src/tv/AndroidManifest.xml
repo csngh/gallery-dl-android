@@ -6,7 +6,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application android:banner="@drawable/tv_banner">
-        <activity android:name=".MainActivity">
+        <activity android:name=".MainActivity" android:exported="true">
             <!-- Puts the app on the Android TV home screen. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

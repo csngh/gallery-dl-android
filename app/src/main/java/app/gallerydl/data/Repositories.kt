@@ -115,6 +115,11 @@ class DownloadRepository(
         if (dao.nextQueued() != null) scheduleDrain(ExistingWorkPolicy.REPLACE)
     }
 
+    /** Starts the queue again after it was paused for lack of storage. */
+    suspend fun resume() {
+        if (dao.nextQueued() != null) scheduleDrain()
+    }
+
     suspend fun clearFinishedHistory() = clearFinished()
 }
 

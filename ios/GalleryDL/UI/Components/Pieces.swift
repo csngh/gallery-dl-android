@@ -333,3 +333,25 @@ struct BottomBar: View {
         .background(Brand.surfaceContainer.ignoresSafeArea(edges: .bottom))
     }
 }
+
+
+// MARK: - Storage warning
+
+/// Shown on Home and Queue while the storage is 99% full and downloads are paused for that reason.
+struct StorageBanner: View {
+    @ObservedObject var storage: StorageMonitor
+
+    var body: some View {
+        if storage.isFull {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 22)).foregroundColor(Color(hex: 0xF9DEDC))
+                Text(S.storageWarning(storage.usedPercent)).textStyle(.bodyMedium, color: Color(hex: 0xF9DEDC))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(Spacing.md)
+            .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Color(hex: 0x8C1D18)))
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.xs)
+        }
+    }
+}

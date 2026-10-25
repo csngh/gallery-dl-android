@@ -7,6 +7,7 @@ final class AppModel: ObservableObject {
     let settings = SettingsStore()
     let network = NetworkMonitor()
     let validator = UrlValidator()
+    let storage = StorageMonitor()
     let engine: DownloadEngine
 
     @Published private(set) var pythonReady = false
@@ -14,7 +15,7 @@ final class AppModel: ObservableObject {
     @Published var transfer: Transfer?
 
     init() {
-        engine = DownloadEngine(store: store, settings: settings, network: network)
+        engine = DownloadEngine(store: store, settings: settings, network: network, storage: storage)
     }
 
     // MARK: Export and import of links

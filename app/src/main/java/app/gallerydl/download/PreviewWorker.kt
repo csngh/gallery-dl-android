@@ -25,6 +25,8 @@ class PreviewWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
     override suspend fun doWork(): Result {
         if (!container.settingsRepository.livePreviews.first()) return Result.success()
+        // Preview clips are small, but they are not worth filling the last of the storage for.
+        if (container.storageMonitor.refresh()) return Result.success()
         val videos = container.database.libraryDao().observeVideos().first()
         // The notification only appears once there is something to make. Foreground promotion can be refused when the
         // job starts in the background; the work still runs.

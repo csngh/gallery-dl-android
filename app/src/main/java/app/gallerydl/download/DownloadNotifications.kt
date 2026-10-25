@@ -45,6 +45,21 @@ class DownloadNotifications(private val context: Context) {
         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
     )
 
+    /** Downloads are waiting because the storage is almost full. */
+    fun storageFull(percent: Int) {
+        val notification = NotificationCompat.Builder(context, RESULT_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setContentTitle(context.getString(R.string.notif_storage_full))
+            .setContentText(context.getString(R.string.notif_storage_full_body, percent))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(openApp())
+            .setAutoCancel(true)
+            .build()
+        notify(STORAGE_ID, notification)
+    }
+
+    fun clearStorageFull() = manager.cancel(STORAGE_ID)
+
     /** The notification of the background job that makes preview clips. */
     fun previews(done: Int, total: Int): ForegroundInfo {
         val notification = NotificationCompat.Builder(context, PROGRESS_CHANNEL)
@@ -149,6 +164,7 @@ class DownloadNotifications(private val context: Context) {
     companion object {
         const val PROGRESS_ID = 1
         const val PREVIEWS_ID = 2
+        const val STORAGE_ID = 3
         const val ACTION_CANCEL = "app.gallerydl.action.CANCEL_DOWNLOAD"
         const val EXTRA_TASK_ID = "task_id"
         private const val PROGRESS_CHANNEL = "downloads"

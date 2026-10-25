@@ -53,6 +53,9 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 - **Export and import links.** The three-dot menu on Home saves every link to a plain text file (one link per line)
   and reads such a file back. Import skips duplicates and unsupported sites and says how many of each. The same file
   works on the iOS app.
+- **Low-storage protection.** When the storage is 99% full, downloads pause (the running link goes back to the queue and
+  keeps its progress), a red warning shows on Home and Queue, and a notification says so. They carry on by themselves
+  once the storage is below 98.5% again.
 - **Download controls.** Wi-Fi-only mode, retries, timeouts, request pacing, and cookies.txt import for sites that need
   a login.
 

@@ -48,6 +48,7 @@ struct HomeScreen: View {
                 .accessibilityLabel(S.actionLinksMenu)
                 IconButton(symbol: "gearshape.fill", color: Brand.onSurfaceVariant, label: S.settingsTitle, action: onOpenSettings)
             }
+            StorageBanner(storage: app.storage)
             LinkField(input: input)
             StartAllButton(count: store.tasks.filter { $0.status == .pending }.count) { app.engine.startAll() }
 

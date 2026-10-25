@@ -70,6 +70,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import app.gallerydl.ui.components.readableWidth
 import app.gallerydl.ui.components.LinkActionsMenu
 import app.gallerydl.ui.components.LinkField
+import app.gallerydl.ui.components.StorageWarningBanner
 import app.gallerydl.ui.components.PendingAction
 import app.gallerydl.ui.components.PendingActionDialog
 import app.gallerydl.ui.components.FullLinkDialog
@@ -100,6 +101,7 @@ fun QueueScreen(viewModel: QueueViewModel = viewModel(factory = AppViewModelProv
                 }
             },
         )
+        StorageWarningBanner(Modifier.padding(horizontal = Spacing.Md))
         LinkField(
             state = input,
             onTextChange = viewModel::onTextChange,

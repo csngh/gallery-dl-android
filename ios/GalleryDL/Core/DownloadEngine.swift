@@ -11,6 +11,7 @@ final class DownloadEngine {
     private let store: AppStore
     private let settings: SettingsStore
     private let network: NetworkMonitor
+    private let storage: StorageMonitor
     private let python = PythonRuntime.shared
 
     private var draining = false
@@ -22,10 +23,12 @@ final class DownloadEngine {
     private var holdQueue = false
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
-    init(store: AppStore, settings: SettingsStore, network: NetworkMonitor) {
+    init(store: AppStore, settings: SettingsStore, network: NetworkMonitor, storage: StorageMonitor) {
         self.store = store
         self.settings = settings
         self.network = network
+        self.storage = storage
+        storage.onResume = { [weak self] in self?.scheduleDrain() }
         network.onChange = { [weak self] in self?.networkChanged() }
     }
 
@@ -86,15 +89,17 @@ final class DownloadEngine {
     }
 
     func scheduleDrain() {
-        guard !draining, networkAllows, !holdQueue else { return }
+        guard !draining, networkAllows, !holdQueue, !storage.refresh() else { return }
         draining = true
         Task { await drain() }
     }
 
     private func drain() async {
-        while !holdQueue, networkAllows, let task = store.nextQueued() {
+        // Nothing new starts while the storage is almost full; the queue is kept and carries on when there is room.
+        while !holdQueue, networkAllows, !storage.refresh(), let task = store.nextQueued() {
             await process(task)
         }
+        if storage.isFull, store.hasQueued { Notifications.storageFull(percent: storage.usedPercent) }
         draining = false
         endBackgroundTaskIfIdle()
     }
@@ -135,6 +140,7 @@ final class DownloadEngine {
         let poller = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.poll(task, run)
+                await self?.checkStorage()
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
         }
@@ -184,6 +190,15 @@ final class DownloadEngine {
         if let finished = store.task(task.id) {
             Notifications.finished(task: finished, status: status, filesSaved: saved, failedFiles: failedFiles)
         }
+    }
+
+    private var lastStorageCheck = Date.distantPast
+
+    /// Looked at every couple of seconds: a download that fills the storage is stopped instead of failing.
+    private func checkStorage() {
+        guard let id = currentId, Date().timeIntervalSince(lastStorageCheck) >= 2 else { return }
+        lastStorageCheck = Date()
+        if storage.refresh() { pausedRuns.insert(id); stopPython() }
     }
 
     /// Reads the progress and the files gallery-dl has finished since the last look, and files them in the library.

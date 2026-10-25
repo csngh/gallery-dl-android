@@ -6,6 +6,9 @@ enum S {
     static let navHome = "Home", navQueue = "Queue", navLibrary = "Library", navActivity = "Activity"
 
     static let exportFileName = "gallery-dl-links.txt"
+    static let notifStorageTitle = "Downloads paused: storage almost full"
+    static func notifStorageBody(_ percent: Int) -> String { "The storage is \(percent)% full. Free some space and downloads carry on by themselves." }
+    static func storageWarning(_ percent: Int) -> String { "Storage is almost full (\(percent)%). Downloads are paused until some space is freed." }
     static let actionRenew = "Renew all links"
     static let actionLinksMenu = "Export or import links", actionExportLinks = "Export links", actionImportLinks = "Import links"
     static let exportEmpty = "There are no links to export yet."

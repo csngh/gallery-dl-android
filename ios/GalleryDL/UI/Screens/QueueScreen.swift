@@ -13,6 +13,7 @@ struct QueueScreen: View {
                     TextPill(title: S.actionClearFinished, color: ActionColors.negative) { ui.confirmClearFinished(store: store) }
                 }
             }
+            StorageBanner(storage: app.storage)
             LinkField(input: input)
             StartAllButton(count: store.tasks.filter { $0.status == .pending }.count) { app.engine.startAll() }
 
