@@ -1,0 +1,54 @@
+name: GalleryDL
+options:
+  bundleIdPrefix: app.gallerydl
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # Python's bytecode cache and dylibs are produced at build time; nothing here is bitcode-compatible.
+    ENABLE_BITCODE: NO
+targets:
+  GalleryDL:
+    type: application
+    platform: iOS
+    sources:
+      - path: GalleryDL
+        excludes:
+          - Info.plist
+      # Brand assets are shared with the Android app instead of copied.
+      - path: ../app/src/main/res/raw/splash_download.wav
+      - path: ../app/src/main/res/font/inter_variable.ttf
+    info:
+      path: GalleryDL/Info.plist
+      properties:
+        CFBundleDisplayName: Gallery DL
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIAppFonts:
+          - inter_variable.ttf
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Dark
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gallerydl.ios
+        SWIFT_OBJC_BRIDGING_HEADER: GalleryDL/GalleryDL-Bridging-Header.h
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        # Set your own team id here (or pick it in Xcode > Signing & Capabilities) to run on a device.
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - framework: Python.xcframework
+        embed: true
+        codeSign: true
+      - sdk: libz.tbd
+      - sdk: libsqlite3.tbd
+    postBuildScripts:
+      - name: Install Python standard library and app code
+        script: bash "$PROJECT_DIR/scripts/embed_python.sh"
+        basedOnDependencyAnalysis: false

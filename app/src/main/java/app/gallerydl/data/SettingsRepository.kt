@@ -88,6 +88,16 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setStartupSound(on: Boolean) = context.settingsStore.edit { it[STARTUP_SOUND] = on }
 
+    /** How many columns the files of a library folder are shown in: 2 to 4. Three by default. */
+    val folderColumns: Flow<Int> = context.settingsStore.data.map { (it[FOLDER_COLUMNS] ?: 3).coerceIn(2, 4) }
+
+    suspend fun setFolderColumns(count: Int) = context.settingsStore.edit { it[FOLDER_COLUMNS] = count.coerceIn(2, 4) }
+
+    /** Silent looping previews of the videos in the library. On by default. */
+    val livePreviews: Flow<Boolean> = context.settingsStore.data.map { it[LIVE_PREVIEWS] ?: true }
+
+    suspend fun setLivePreviews(on: Boolean) = context.settingsStore.edit { it[LIVE_PREVIEWS] = on }
+
     /** How many cookies the imported cookies.txt holds; 0 when none is imported. */
     val cookiesCount: Flow<Int> = context.settingsStore.data.map { it[COOKIES_COUNT] ?: 0 }
 
@@ -111,8 +121,20 @@ class SettingsRepository(private val context: Context) {
     suspend fun importCookies(uri: Uri): Int? = withContext(Dispatchers.IO) {
         val text = runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
-                val bytes = input.readNBytes(MAX_COOKIES_BYTES + 1)
-                if (bytes.size > MAX_COOKIES_BYTES) null else bytes.toString(Charsets.UTF_8)
+                // Read in pieces, stopping past the limit. (InputStream.readNBytes needs Android 13; the app supports 10.)
+                val out = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(8 * 1024)
+                var tooBig = false
+                while (true) {
+                    val read = input.read(chunk)
+                    if (read < 0) break
+                    out.write(chunk, 0, read)
+                    if (out.size() > MAX_COOKIES_BYTES) {
+                        tooBig = true
+                        break
+                    }
+                }
+                if (tooBig) null else out.toString(Charsets.UTF_8.name())
             }
         }.getOrNull() ?: return@withContext null
         val count = text.lineSequence().count { line ->
@@ -176,6 +198,8 @@ class SettingsRepository(private val context: Context) {
         val WIFI_ONLY = booleanPreferencesKey("opt_wifi_only")
         val COOKIES_ON = booleanPreferencesKey("opt_cookies_on")
         val STARTUP_SOUND = booleanPreferencesKey("startup_sound")
+        val LIVE_PREVIEWS = booleanPreferencesKey("live_previews")
+        val FOLDER_COLUMNS = intPreferencesKey("folder_columns")
         val COOKIES_COUNT = intPreferencesKey("cookies_count")
         const val MAX_COOKIES_BYTES = 5 * 1024 * 1024
     }

@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Link
 @Composable
 fun LinkActionsMenu(
     showRetry: Boolean,
+    /** What the retry item says: "Retry" for a link that went wrong, "Check for new files" for one that finished. */
+    retryLabel: Int = R.string.action_retry,
     onRetry: () -> Unit,
     onRemove: () -> Unit,
     onEdit: (() -> Unit)? = null,
@@ -63,7 +65,7 @@ fun LinkActionsMenu(
             }
             if (showRetry) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.action_retry)) },
+                    text = { Text(stringResource(retryLabel)) },
                     leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
                     colors = MenuDefaults.itemColors(
                         textColor = ActionColors.Positive,

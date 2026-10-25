@@ -22,7 +22,10 @@ object AppViewModelProvider {
             val c = app().container
             HomeViewModel(c.downloadRepository, c.urlValidator)
         }
-        initializer { LibraryViewModel(app().container.libraryRepository) }
+        initializer {
+            val c = app().container
+            LibraryViewModel(c.libraryRepository, c.livePreviews, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.settingsRepository)
+        }
         initializer { ActivityViewModel(app().container.downloadRepository) }
         initializer {
             val c = app().container
@@ -32,7 +35,7 @@ object AppViewModelProvider {
             val c = app().container
             SettingsViewModel(
                 c.settingsRepository, c.downloadRepository, c.pythonBridge, c.applicationContext,
-                c.options, c.destination, c.cookiesCount, c.startupSound,
+                c.options, c.destination, c.cookiesCount, c.startupSound, c.livePreviews, c.thumbnailCache, c.previewStripCache,
             )
         }
     }

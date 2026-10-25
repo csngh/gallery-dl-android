@@ -93,6 +93,10 @@ fun linkDisplayName(url: String?, fallback: String): String {
     return withoutExtension.replace('_', ' ').trim().ifEmpty { fallback }
 }
 
+/** The name a folder shows, followed by " / tag" when the user gave it a tag. */
+fun folderTitle(displayName: String, tag: String?): String =
+    if (tag.isNullOrBlank()) displayName else "$displayName / ${tag.trim()}"
+
 /** Folder name for one link: host plus the last two path segments, e.g. "imgur.com_a_AbC123". */
 fun linkFolderName(url: String): String {
     val uri = Uri.parse(url)

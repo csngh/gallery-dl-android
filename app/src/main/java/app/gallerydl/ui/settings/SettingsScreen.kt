@@ -57,7 +57,7 @@ import app.gallerydl.ui.theme.ActionColors
 import app.gallerydl.ui.theme.Spacing
 
 /** Settings actions that ask for confirmation first. */
-private enum class SettingsConfirm { RemoveCookies, ClearHistory, ResetAll }
+private enum class SettingsConfirm { RemoveCookies, ClearHistory, ResetAll, ClearThumbnails }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,8 +66,10 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = viewModel(
     val destination by viewModel.destination.collectAsStateWithLifecycle()
     val cookiesCount by viewModel.cookiesCount.collectAsStateWithLifecycle()
     val startupSound by viewModel.startupSound.collectAsStateWithLifecycle()
+    val livePreviews by viewModel.livePreviews.collectAsStateWithLifecycle()
     val cookieError by viewModel.cookieError.collectAsStateWithLifecycle()
     val recordsBytes by viewModel.recordsBytes.collectAsStateWithLifecycle()
+    val thumbnailBytes by viewModel.thumbnailBytes.collectAsStateWithLifecycle()
     val about by viewModel.about.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scroll = rememberScrollState()
@@ -104,6 +106,13 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = viewModel(
                     R.string.option_startup_sound_body,
                     startupSound,
                     viewModel::setStartupSound,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SwitchRow(
+                    R.string.option_live_previews_title,
+                    R.string.option_live_previews_body,
+                    livePreviews,
+                    viewModel::setLivePreviews,
                 )
             }
 
@@ -232,6 +241,15 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = viewModel(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+                thumbnailBytes?.let {
+                    Text(
+                        stringResource(R.string.storage_thumbnails, Formatter.formatShortFileSize(context, it)),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                OutlinedButton(onClick = { confirm = SettingsConfirm.ClearThumbnails }) {
+                    Text(stringResource(R.string.action_clear_thumbnails))
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
                     OutlinedButton(onClick = { confirm = SettingsConfirm.ClearHistory }) {
                         Text(stringResource(R.string.action_clear_history))
@@ -280,6 +298,16 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = viewModel(
             confirmLabel = stringResource(R.string.action_clear),
             onConfirm = {
                 viewModel.clearFinishedHistory()
+                confirm = null
+            },
+            onDismiss = { confirm = null },
+        )
+        SettingsConfirm.ClearThumbnails -> ConfirmDialog(
+            title = stringResource(R.string.clear_thumbnails_title),
+            message = stringResource(R.string.clear_thumbnails_message),
+            confirmLabel = stringResource(R.string.action_clear),
+            onConfirm = {
+                viewModel.clearThumbnails()
                 confirm = null
             },
             onDismiss = { confirm = null },

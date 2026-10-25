@@ -190,8 +190,10 @@ private fun TaskCard(
                     TaskStatus.FAILED, TaskStatus.CANCELLED ->
                         LinkActionsMenu(showRetry = true, onRetry = onRetry, onRemove = onRemove, onViewLink = onViewLink)
                     TaskStatus.COMPLETED ->
+                        // A finished link can be run again to pick up anything new; only new files are fetched.
                         LinkActionsMenu(
-                            showRetry = task.result == TaskResult.PARTIAL,
+                            showRetry = true,
+                            retryLabel = if (task.result == TaskResult.PARTIAL) R.string.action_retry else R.string.action_check_new,
                             onRetry = onRetry,
                             onRemove = onRemove,
                             onViewLink = onViewLink,

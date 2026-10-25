@@ -19,10 +19,20 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+    }
 
-        ndk {
-            // Chaquopy bundles a Python runtime per ABI; keep to the ones real devices/emulators use.
-            abiFilters += listOf("arm64-v8a", "x86_64")
+    // Chaquopy bundles a Python runtime per ABI, so each build keeps only the ones its devices use.
+    flavorDimensions += "device"
+    productFlavors {
+        create("phone") {
+            dimension = "device"
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
+        // For Android TV: a launcher entry with a banner for the TV home screen, and no touchscreen required (see
+        // src/tv/AndroidManifest.xml). Many TVs and projectors run 32-bit software, so this build adds 32-bit ARM.
+        create("tv") {
+            dimension = "device"
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
         }
     }
 
@@ -73,6 +83,10 @@ chaquopy {
             install("gallery-dl==1.28.5")
         }
     }
+    productFlavors {
+        // Chaquopy has no 32-bit build of Python 3.12, so the TV build uses 3.11 (needs python3.11 on the build machine).
+        getByName("tv") { version = "3.11" }
+    }
 }
 
 ksp {
@@ -103,6 +117,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.documentfile)
 
+    implementation(libs.androidx.media3.exoplayer)
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     implementation(libs.coil.network.okhttp)

@@ -37,6 +37,8 @@ data class DownloadTask(
 data class Folder(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(collate = ColumnInfo.NOCASE) val name: String,
+    /** A label the user gave the folder; it shows as "name / tag". */
+    val tag: String? = null,
 )
 
 @Entity(

@@ -187,7 +187,8 @@ private fun StatCard(value: Int, label: Int, icon: ImageVector, tone: Tone, modi
 private fun LinkRow(task: DownloadTask, onRetry: () -> Unit) {
     var expanded by rememberSaveable(task.id) { mutableStateOf(false) }
     val result = task.result
-    val canRetry = result == TaskResult.FAILED || result == TaskResult.PARTIAL || result == TaskResult.CANCELLED
+    // Every finished link can be run again; a completed one only looks for new files.
+    val canRetry = result != TaskResult.IN_PROGRESS && result != TaskResult.READY
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
 
     val summary = buildList {
@@ -254,7 +255,10 @@ private fun LinkRow(task: DownloadTask, onRetry: () -> Unit) {
                             border = BorderStroke(1.dp, ActionColors.Positive),
                         ) {
                             Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Text(stringResource(R.string.action_retry), modifier = Modifier.padding(start = Spacing.Sm))
+                            Text(
+                                stringResource(if (result == TaskResult.COMPLETED) R.string.action_check_new else R.string.action_retry),
+                                modifier = Modifier.padding(start = Spacing.Sm),
+                            )
                         }
                     }
                 }

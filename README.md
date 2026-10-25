@@ -2,12 +2,13 @@
 
 <img src="docs/brand/logo-lockup.png" alt="Gallery DL Android" width="560">
 
-**A native Android front end and download manager for [gallery-dl](https://github.com/mikf/gallery-dl).**
+**A native Android (and iPhone) front end and download manager for [gallery-dl](https://github.com/mikf/gallery-dl).**
 
-gallery-dl runs *inside the app* (embedded Python via [Chaquopy](https://chaquo.com/chaquopy/)),
-so there is no server and no backend.
+gallery-dl runs *inside the app* (embedded Python), so there is no server and no backend.
 
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)
+![Android TV](https://img.shields.io/badge/Android%20TV-supported-4285F4?logo=googletv&logoColor=white)
+![iOS 15+](https://img.shields.io/badge/iOS-15%2B-000000?logo=apple&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white)
 ![gallery-dl](https://img.shields.io/badge/gallery--dl-1.28.5-blue)
 ![Theme](https://img.shields.io/badge/theme-dark-0A0F1F)
@@ -37,63 +38,119 @@ so there is no server and no backend.
 
 ## Features
 
-- **One link at a time.** Paste a link; it is validated against gallery-dl's supported sites and queued.
-- **Live progress.** Overall percent when the site reports an album size, otherwise per-file percent.
-- **A folder per link.** Saved to shared storage (Pictures / Movies / Music / Downloads under `GalleryDl/`, no
-  storage permission needed) or to a folder you pick.
-- **Library.** One folder per link, swipeable full-screen viewer, multi-select delete, search. Entries disappear
-  when their files are deleted outside the app.
-- **Activity.** Per-link results (completed / partial / failed), file counts, error details, and retry. A retry
-  only fetches files that are still missing.
-- **Download controls.** Wi-Fi-only mode and a configurable retry count.
+### Downloading
+
+- **One link at a time.** Paste a link (or share one from a browser); it is checked against gallery-dl's supported
+  sites and added. Nothing downloads until you press **Start** (or **Start all**), and one link downloads at a time.
+- **Live progress.** Overall percent when the site reports an album size, otherwise per-file percent, in the app and in
+  a notification with a Cancel button.
+- **A folder per link.** Saved to shared storage (Pictures / Movies / Music / Downloads under `GalleryDl/`, no storage
+  permission needed) or to a folder you pick.
+- **Renew.** The refresh button on Home runs every link again to pick up new files, and starts links that were only
+  added. Files you already have are skipped.
+- **Check for new files / Retry.** A finished link can be run again from its menu (or in Activity); a retry only
+  fetches what is still missing.
+- **Export and import links.** The three-dot menu on Home saves every link to a plain text file (one link per line)
+  and reads such a file back. Import skips duplicates and unsupported sites and says how many of each. The same file
+  works on the iOS app.
+- **Download controls.** Wi-Fi-only mode, retries, timeouts, request pacing, and cookies.txt import for sites that need
+  a login.
+
+### Library
+
+- **One folder per link**, with search of file names (currently hidden), multi-select delete, and **folder tags**
+  (long-press a folder, or use the tag button inside it): the folder then reads "name / tag".
+- **Live previews.** Every video plays a silent, looping preview, and folder covers cycle through clips from random
+  videos in their folder. A preview is a random 3 second window of the video, saved once at the video's own frame rate
+  (up to 30 fps) as a short strip of small JPEG frames, so playing it needs no video decoder and about 1-2 MB of
+  memory per tile; every visible tile can animate at once. Clips are made right after a download, and a background job
+  (it carries on after you leave the Library, shows a quiet notification, waits while the battery is low) makes the
+  clips for every video that lacks one, with a "Preparing previews" bar. Thumbnails, previews and website icons are
+  kept on the device until the video is deleted or you clear them.
+- **Columns.** 2, 3 or 4 columns inside a folder.
+- **Built-in video player.** Videos and audio play inside the app (Media3 ExoPlayer): swipe sideways to scrub with a
+  live picture and a "+0:12" pill, a seek bar that previews as you drag, playback speed 0.5x to 2x (remembered), pinch or
+  double-tap to zoom and drag to pan, tap to hide the controls. Formats the phone cannot play fall back to opening
+  another app.
+- **Entries disappear** when their files are deleted outside the app.
+
+### Android TV
+
+- A separate TV build appears on the TV home screen with a banner and does not need a touchscreen; use a mouse or a
+  touch-capable remote.
+- Wide screens (TV, tablets, landscape) show the folder list on the left (one column, 20%) and the open folder on the
+  right (80%).
+
+### Other
+
+- **Home** groups links by website, with each site's own icon (cached on the device).
+- **Activity** shows per-link results (completed / partial / failed), file counts and error details.
+- **Settings** cover pacing, website options, download location, connection, accounts (cookies), startup sound, live
+  previews, storage and reset.
 - **Dark theme only.**
 
-## Tech stack
+## Android: tech stack and layout
 
 | Area | Choice |
 | --- | --- |
 | UI | Kotlin, Jetpack Compose, Material 3 |
 | State | ViewModel + coroutines / Flow |
 | Storage | Room, DataStore |
-| Background work | WorkManager (foreground service) |
+| Background work | WorkManager (download queue and preview job, both as foreground services) |
 | Images | Coil 3 |
-| Downloader | Chaquopy (Python 3.12) running gallery-dl 1.28.5 |
+| Video and audio | Media3 ExoPlayer |
+| Downloader | Chaquopy running gallery-dl 1.28.5 (Python 3.12; 3.11 in the TV build) |
 | DI | Manual (`AppContainer`) |
 
 ```
 app/src/main/
   python/gdl_bridge.py     gallery-dl wrapper: progress, failure counts, per-link archive
   java/app/gallerydl/
-    data/                  Room entities, DAOs, migrations, repositories, settings
-    download/              Python bridge, WorkManager worker, MediaStore/SAF saving
-    ui/                    queue, library, activity screens and ViewModels
+    data/                  Room entities, DAOs, migrations, repositories, settings, thumbnail and preview caches
+    download/              Python bridge, download and preview workers, notifications, MediaStore/SAF saving
+    share/                 the popup for links shared from a browser
+    ui/                    screens, ViewModels, shared components (video player, live previews)
+app/src/tv/                TV-only manifest entries and launcher banner
+ios/                       the iPhone app (see "iPhone (iOS)" below)
 ```
 
 Room schemas are exported to `app/schemas/` and are committed; keep them when changing the database.
 
-## Getting started
+## Android: building
 
 ### Requirements
 
 - JDK **17** (the Android Gradle Plugin used here does not support newer JDKs)
 - Android SDK with platform 35 and build-tools 35 (`ANDROID_HOME` set, or `sdk.dir` in `local.properties`)
-- Python 3 on the build machine (Chaquopy uses it to install gallery-dl)
-- Android 10 (API 29) or newer to run; arm64 and x86_64 are bundled
+- Python 3 on the build machine (Chaquopy uses it to install gallery-dl); the TV build also needs **`python3.11`**
+- Android 10 (API 29) or newer to run
 
-### Build
+### Builds
+
+There are two product flavors, one APK each:
+
+| Flavor | For | ABIs | Python |
+| --- | --- | --- | --- |
+| `phone` | phones and tablets | arm64-v8a, x86_64 | 3.12 |
+| `tv` | Android TV, projectors, TV boxes | armeabi-v7a, arm64-v8a, x86_64 | 3.11 |
+
+The TV build adds 32-bit ARM because many TVs and projectors run 32-bit software, and a 64-bit-only app is rejected
+there as "not compatible". Chaquopy has no 32-bit Python 3.12, which is why that build uses 3.11.
 
 ```sh
 export ANDROID_HOME=/path/to/android-sdk
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)   # macOS
 
-./gradlew :app:assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :app:installDebug           # build and install on a connected device/emulator
+./gradlew :app:assemblePhoneDebug     # app/build/outputs/apk/phone/debug/app-phone-debug.apk
+./gradlew :app:installPhoneDebug      # build and install on a connected device/emulator
+./gradlew :app:assembleTvDebug        # app/build/outputs/apk/tv/debug/app-tv-debug.apk
 ```
 
-### Signed release build
+### Signed release builds
 
 1. Create a keystore and copy `keystore.properties.example` to `keystore.properties` (git-ignored).
-2. `./gradlew :app:assembleRelease` -> `app/build/outputs/apk/release/app-release.apk`
+2. `./gradlew :app:assemblePhoneRelease` -> `app/build/outputs/apk/phone/release/app-phone-release.apk`
+3. `./gradlew :app:assembleTvRelease` -> `app/build/outputs/apk/tv/release/app-tv-release.apk`
 
 > [!IMPORTANT]
 > Back up the keystore: updates to an installed app must be signed with the same key.
@@ -106,14 +163,118 @@ Debug and release builds use different signing keys, so switching an installed c
 
 `app/proguard-rules.pro` keeps `com.chaquo.python.**` and the `DownloadListener` implementations. Chaquopy's native
 code finds its Java classes by name, so without these rules `Python.start()` crashes with a native `SIGSEGV` in
-release builds only. After changing shrinker settings or upgrading Chaquopy/AGP, install the **release** APK and run a
-real download before shipping.
+release builds only. After changing shrinker settings or upgrading Chaquopy, AGP or Media3, install the **release** APK
+and run a real download and play a video before shipping.
+
+## iPhone (iOS)
+
+A SwiftUI port of the same app lives in [`ios/`](ios/). It has the same screens, copy, colours and behaviour, embeds
+Python 3.13 ([BeeWare Python-Apple-support](https://github.com/beeware/Python-Apple-support)) and runs gallery-dl
+in-process. It reuses `app/src/main/python/gdl_bridge.py` unchanged; `ios/python/gdl_ios.py` is the thin layer between
+that file and Swift. iOS 15 or newer.
+
+### Set up and run
+
+```sh
+brew install xcodegen
+ios/scripts/setup.sh        # downloads Python.xcframework, installs gallery-dl, generates GalleryDL.xcodeproj
+open ios/GalleryDL.xcodeproj
+```
+
+Run on the simulator straight away. For a real iPhone, pick your free Apple ID team under Signing & Capabilities (or
+set `DEVELOPMENT_TEAM` in `ios/project.yml`). A free-account install expires after 7 days; reinstall from Xcode, or
+refresh with AltStore / SideStore.
+
+### Installing without a paid Apple account
+
+Build an unsigned `.ipa` with `ios/scripts/make_ipa.sh` (it lands in `ios/dist/GalleryDL.ipa`), then install it with
+[AltServer](https://altstore.io) on a Mac: hold Option and click the AltServer menu bar icon, choose
+**Sideload .ipa...**, pick the iPhone and the file, and sign in with your Apple ID. A free Apple ID works; the app has to
+be refreshed every 7 days (AltStore on the phone does that over Wi-Fi).
+
+### What is ported
+
+Home (links grouped by website, with each site's icon), Queue, Library (folders, tags, 2 to 4 columns, multi-select
+delete, swipeable full-screen viewer with in-app video and audio playback), Activity (stats, filters, retry, Check for
+new files) and Settings (every option, cookies import, storage, reset). The queue works the same way: nothing starts
+until you press Start, one link downloads at a time, a retry only fetches what is missing. Renew, export and import of
+links, and the folder tags work as described above.
+
+- **Export** opens the share sheet (save the file to Files); **import** opens the file picker and reports how many
+  links were added, were duplicates, were on unsupported sites, or were not links.
+- **Website icons** are fetched once and kept in Application Support (a site with no icon is asked again after a week).
+- The library search box is hidden for now, as on Android.
+
+The Android Room database is replaced by a JSON store (`Core/AppStore.swift`), DataStore by UserDefaults, and
+WorkManager by `Core/DownloadEngine.swift`.
+
+### Layout
+
+| Path | Purpose |
+| --- | --- |
+| `ios/GalleryDL/Core/` | Models, store, settings, download engine, notifications |
+| `ios/GalleryDL/UI/` | Screens (`Screens/`) and shared controls (`Components/`) |
+| `ios/GalleryDL/Theme/` | Material 3 dark scheme, type scale, spacing, tones (copied from Android) |
+| `ios/GalleryDL/PythonShim.m`, `PythonRuntime.swift` | Embedded Python |
+| `ios/python/gdl_ios.py` | JSON entry points: `check`, `download`, `poll`, `cancel` |
+| `ios/scripts/embed_python.sh` | Build phase: copies stdlib and packages into the bundle, turns `.so` files into frameworks |
+| `ios/scripts/make_ipa.sh` | Builds an unsigned `.ipa` for AltStore / AltServer |
+| `ios/requirements.txt` | Pure-Python packages only (iOS cannot load macOS binaries) |
+
+Files are kept in the app's private storage (Application Support) and shown in the Library; they do not appear in the
+Files app. Debug builds accept launch arguments for simulator checks (`-testURLs`, `-testTab`, `-testSettings`,
+`-testFolder`, `-testViewer`, `-noPermissionPrompt`).
+
+### Live previews on iOS
+
+When a video is downloaded (and the first time an older one is shown) `Core/PreviewStripStore.swift` reads a random
+3 second window of it, front to back with `AVAssetReader`, and saves its frames as small JPEGs in one `.strip` file. A
+strip keeps the video's own frame rate, up to 30 (a 60 fps video is saved at 30, a 24 fps one at 24), so it is
+typically 0.5-1 MB. `UI/Components/LivePreview.swift` plays them: one shared display link steps every animating tile,
+each tile decodes just the frame that belongs to the elapsed time off the main thread, and the frame is put straight on
+a `CALayer`, so SwiftUI redraws nothing at 30 frames a second. A tile needs no video decoder and only a megabyte or two,
+and every visible tile animates at once. A folder cover cycles through the strips of up to 6 random videos from its
+folder, cross-fading over 0.4 s. Until a strip exists the tile shows its still thumbnail and the strip is requested.
+While the library is open, a sweep also makes the strip of every video that is still missing one, one at a time and
+behind anything on screen, with a "Preparing previews, 12 of 40" bar; leaving the library pauses the sweep work that has
+not started (iOS does not allow the long background job that Android uses). Previews stop while the app is in the
+background, the viewer is open, Low Power Mode or Reduce Motion is on, or the system warns about memory.
+
+`Core/ThumbnailStore.swift` keeps the still thumbnails. Both live in Application Support, which iOS never purges, out of
+backups, and are removed only when their file or folder is deleted, or from Settings > Storage and reset > Clear
+thumbnail cache.
+
+### Video player on iOS
+
+`UI/Components/VideoViewer.swift` is the viewer's own player (the stock SwiftUI player has no speed menu and would scale
+its controls when zoomed). Pinch to zoom 1x to 5x, drag to pan while zoomed, double-tap to zoom in and out. A swipe
+sideways scrubs through the video (the whole screen width covers up to 90 seconds, or the whole video if shorter), so
+paging between files is off on a video page. Dragging the scrubber shows the picture at that moment live, with the same
+time bubble as the swipe. The left-edge back swipe is off on video and audio pages (moving a playing video across the
+screen made it lag); use the back button or swipe down. Speed menu 0.5x to 2x, play and pause. Tap to hide or show the
+controls. The Android player behaves the same way.
+
+### Differences from Android
+
+- **Background downloads.** iOS has no foreground service. Downloads run while the app is open and for a short while
+  after leaving it; then the running link goes back to the queue and a notification says so. Keep the app open for long
+  downloads.
+- **Download location.** Always inside the app; there is no folder picker.
+- **Share from the browser** (Android's share popup) needs an iOS share extension, which is not built.
+- **Notifications** announce finished links only; iOS cannot update a live progress notification in the background.
+- **Preview catch-up** runs only while the Library is open.
 
 ## Known limitations
 
-- No login or cookie support, so private or login-gated content will not download.
+- Private or login-gated content needs a cookies.txt exported from your browser (Settings > Accounts); there is no
+  in-app login.
 - No overall percentage for links that expand into many other links (profiles, threads); those show per-file progress.
-- No pinch-to-zoom in the viewer.
+- Images in the viewer cannot be zoomed yet (videos can).
+- The library search box is hidden for now.
+- On a video page, swiping scrubs instead of moving to the next file; go back to the grid to open another one.
+- The TV build is made for a mouse or touch input; it has no remote (D-pad) focus navigation.
+- Preview clips are made on the device after a download; on a very slow phone the first visit to a large library takes a
+  while (it keeps going in the background).
 
 ## Credits
 

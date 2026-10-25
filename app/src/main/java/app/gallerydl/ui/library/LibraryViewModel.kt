@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -22,7 +23,23 @@ import kotlinx.coroutines.launch
 data class OpenFolder(val id: Long, val name: String)
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-class LibraryViewModel(private val library: LibraryRepository) : ViewModel() {
+class LibraryViewModel(
+    private val library: LibraryRepository,
+    /** The Live previews setting. */
+    val livePreviews: StateFlow<Boolean>,
+    /** The persistent thumbnails shown in the folder and file grids. */
+    val thumbnails: app.gallerydl.data.ThumbnailCache,
+    /** The saved silent preview clips of the videos. */
+    val previewStrips: app.gallerydl.data.PreviewStripCache,
+    /** How many columns the files of an open folder use: 2 to 4. */
+    val folderColumns: StateFlow<Int>,
+    private val settings: app.gallerydl.data.SettingsRepository,
+) : ViewModel() {
+
+    fun setFolderColumns(count: Int) {
+        viewModelScope.launch { settings.setFolderColumns(count) }
+    }
+
 
     /** Search term for the folder list; the files of an open folder have their own, so two panes can coexist. */
     val query = MutableStateFlow("")
@@ -41,6 +58,11 @@ class LibraryViewModel(private val library: LibraryRepository) : ViewModel() {
     val folders: StateFlow<List<FolderSummary>?> = debouncedQuery
         .flatMapLatest { library.observeFolders(it.trim()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** The videos of every folder, for the live previews on the folder covers. */
+    val videosByFolder: StateFlow<Map<Long, List<LibraryItem>>> = library.observeVideos()
+        .map { videos -> videos.groupBy { it.folderId!! } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Items of the open folder; null while loading. */
     val items: StateFlow<List<LibraryItem>?> = _openFolder
@@ -99,4 +121,11 @@ class LibraryViewModel(private val library: LibraryRepository) : ViewModel() {
     fun deleteItem(id: Long) = viewModelScope.launch { library.deleteItems(listOf(id)) }
 
     fun deleteFolder(id: Long) = viewModelScope.launch { library.deleteFolder(id) }
+
+    fun setFolderTag(id: Long, tag: String) = viewModelScope.launch { library.setFolderTag(id, tag) }
+
+    /** The tag of the open folder, kept up to date while it is open. */
+    val openFolderTag: StateFlow<String?> = _openFolder
+        .flatMapLatest { folder -> if (folder == null) flowOf(null) else library.observeFolderTag(folder.id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 }

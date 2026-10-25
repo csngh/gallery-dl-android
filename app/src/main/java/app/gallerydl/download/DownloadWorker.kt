@@ -163,17 +163,18 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         file.delete()
         // Looked up per file, so deleting the folder in the library mid-download cannot leave a dangling id.
         val folderId = container.libraryRepository.ensureFolder(linkFolder)
-        container.libraryRepository.addItem(
-            LibraryItem(
-                contentUri = saved.uri.toString(),
-                displayName = saved.displayName,
-                mimeType = saved.mimeType,
-                sourceUrl = task.url,
-                taskId = task.id,
-                folderId = folderId,
-                addedAt = System.currentTimeMillis(),
-            ),
+        val item = LibraryItem(
+            contentUri = saved.uri.toString(),
+            displayName = saved.displayName,
+            mimeType = saved.mimeType,
+            sourceUrl = task.url,
+            taskId = task.id,
+            folderId = folderId,
+            addedAt = System.currentTimeMillis(),
         )
+        val id = container.libraryRepository.addItem(item)
+        // The silent preview of a new video is made right away, in the background, one at a time.
+        container.previewStripCache.requestMake(item.copy(id = id))
         container.database.taskDao().fileSaved(task.id)
     }
 

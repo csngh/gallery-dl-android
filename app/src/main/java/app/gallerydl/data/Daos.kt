@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import app.gallerydl.download.folderTitle
 import app.gallerydl.download.linkDisplayName
 import kotlinx.coroutines.flow.Flow
 
@@ -85,6 +86,18 @@ interface TaskDao {
     )
     suspend fun requeueFailed()
 
+    /**
+     * Queues every link that is not already queued or running, whatever it did last: links not started yet start, and
+     * finished, failed and cancelled ones check for new files. Returns how many were queued.
+     */
+    @Query(
+        """
+        UPDATE download_tasks SET status = 'QUEUED', currentFile = NULL, error = NULL, failedFiles = 0, finishedAt = NULL
+        WHERE status IN ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED')
+        """
+    )
+    suspend fun renewAll(): Int
+
     @Query("SELECT id FROM download_tasks WHERE status IN ('COMPLETED', 'FAILED', 'CANCELLED')")
     suspend fun finishedIds(): List<Long>
 
@@ -100,12 +113,17 @@ data class FolderSummary(
     val id: Long,
     val name: String,
     val itemCount: Int,
+    val coverId: Long?,
     val coverUri: String?,
     val coverMime: String?,
     val sourceUrl: String?,
+    val tag: String?,
 ) {
     /** What the library shows: the last part of the link rather than the full folder name. */
     val displayName: String get() = linkDisplayName(sourceUrl, name)
+
+    /** What the library shows: the name, then " / tag" when the folder has a tag. */
+    val title: String get() = folderTitle(displayName, tag)
 }
 
 @Dao
@@ -114,14 +132,17 @@ interface LibraryDao {
     @Query(
         """
         SELECT f.id AS id, f.name AS name, COUNT(i.id) AS itemCount,
+               (SELECT c.id FROM library_items c WHERE c.folderId = f.id
+                ORDER BY c.addedAt DESC, c.id DESC LIMIT 1) AS coverId,
                (SELECT c.contentUri FROM library_items c WHERE c.folderId = f.id
                 ORDER BY c.addedAt DESC, c.id DESC LIMIT 1) AS coverUri,
                (SELECT c.mimeType FROM library_items c WHERE c.folderId = f.id
                 ORDER BY c.addedAt DESC, c.id DESC LIMIT 1) AS coverMime,
                (SELECT c.sourceUrl FROM library_items c WHERE c.folderId = f.id
-                ORDER BY c.addedAt DESC, c.id DESC LIMIT 1) AS sourceUrl
+                ORDER BY c.addedAt DESC, c.id DESC LIMIT 1) AS sourceUrl,
+               f.tag AS tag
         FROM folders f JOIN library_items i ON i.folderId = f.id
-        WHERE (:query = '' OR f.name LIKE '%' || :query || '%')
+        WHERE (:query = '' OR f.name LIKE '%' || :query || '%' OR f.tag LIKE '%' || :query || '%')
         GROUP BY f.id
         ORDER BY MAX(i.addedAt) DESC
         """
@@ -136,6 +157,10 @@ interface LibraryDao {
         """
     )
     fun observeItems(folderId: Long, query: String): Flow<List<LibraryItem>>
+
+    /** Every video that belongs to a folder, for the live previews on the folder covers. */
+    @Query("SELECT * FROM library_items WHERE folderId IS NOT NULL AND mimeType LIKE 'video/%' ORDER BY addedAt DESC, id DESC")
+    fun observeVideos(): Flow<List<LibraryItem>>
 
     @Query("SELECT * FROM library_items")
     suspend fun allItems(): List<LibraryItem>
@@ -160,4 +185,10 @@ interface LibraryDao {
 
     @Query("DELETE FROM folders WHERE id = :id")
     suspend fun deleteFolder(id: Long)
+
+    @Query("UPDATE folders SET tag = :tag WHERE id = :id")
+    suspend fun setFolderTag(id: Long, tag: String?)
+
+    @Query("SELECT tag FROM folders WHERE id = :id")
+    fun observeFolderTag(id: Long): Flow<String?>
 }

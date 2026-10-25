@@ -45,6 +45,23 @@ class DownloadNotifications(private val context: Context) {
         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
     )
 
+    /** The notification of the background job that makes preview clips. */
+    fun previews(done: Int, total: Int): ForegroundInfo {
+        val notification = NotificationCompat.Builder(context, PROGRESS_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setContentTitle(context.getString(R.string.notif_previews))
+            .setContentText(context.getString(R.string.notif_previews_progress, done, total))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
+            .setContentIntent(openApp())
+            .setProgress(total.coerceAtLeast(1), done, false)
+            .build()
+        return ForegroundInfo(PREVIEWS_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    }
+
     /**
      * Updates the live notification. [percent] is 0 to 100 for the whole link when known, or -1 for an
      * indeterminate bar. Posting with the same id updates the foreground service's own notification.
@@ -131,6 +148,7 @@ class DownloadNotifications(private val context: Context) {
 
     companion object {
         const val PROGRESS_ID = 1
+        const val PREVIEWS_ID = 2
         const val ACTION_CANCEL = "app.gallerydl.action.CANCEL_DOWNLOAD"
         const val EXTRA_TASK_ID = "task_id"
         private const val PROGRESS_CHANNEL = "downloads"

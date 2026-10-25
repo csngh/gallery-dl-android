@@ -28,6 +28,19 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -88,10 +101,35 @@ fun HomeScreen(
     var pending by remember { mutableStateOf<PendingAction?>(null) }
     var fullLink by remember { mutableStateOf<String?>(null) }
 
+    val loaded = groups
+    val context = LocalContext.current
+    val transfer by viewModel.transfer.collectAsStateWithLifecycle()
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) viewModel.exportTo(context.contentResolver, uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importFrom(context.contentResolver, uri)
+    }
+    val exportName = stringResource(R.string.export_file_name)
+    val nothingToExport = stringResource(R.string.export_empty)
+
     Column(Modifier.readableWidth()) {
         TopAppBar(
             title = { ScreenTitle(stringResource(R.string.nav_home)) },
             actions = {
+                IconButton(onClick = viewModel::renewAll) {
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_renew))
+                }
+                LinksMenu(
+                    onExport = {
+                        if (loaded.isNullOrEmpty()) {
+                            Toast.makeText(context, nothingToExport, Toast.LENGTH_SHORT).show()
+                        } else {
+                            exportLauncher.launch(exportName)
+                        }
+                    },
+                    onImport = { importLauncher.launch(arrayOf("*/*")) },
+                )
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings_title))
                 }
@@ -104,7 +142,6 @@ fun HomeScreen(
             modifier = Modifier.padding(horizontal = Spacing.Md, vertical = Spacing.Sm),
         )
 
-        val loaded = groups
         StartAllButton(
             count = loaded?.sumOf { it.ready } ?: 0,
             onClick = viewModel::startAll,
@@ -145,6 +182,8 @@ fun HomeScreen(
     }
 
     fullLink?.let { url -> FullLinkDialog(url = url, onDismiss = { fullLink = null }) }
+
+    transfer?.let { TransferDialog(it, onDismiss = viewModel::dismissTransfer) }
 
     edit?.let { state ->
         EditLinkDialog(
@@ -288,8 +327,11 @@ private fun SiteLinkRow(
             TaskStatus.FAILED, TaskStatus.CANCELLED ->
                 LinkActionsMenu(showRetry = true, onRetry = onRetry, onRemove = onRemove, onEdit = onEdit, onViewLink = onViewLink)
             TaskStatus.COMPLETED ->
+                // A finished link can be run again to pick up anything new; its memory of saved files means only new
+                // files are fetched.
                 LinkActionsMenu(
-                    showRetry = task.result == TaskResult.PARTIAL,
+                    showRetry = true,
+                    retryLabel = if (task.result == TaskResult.PARTIAL) R.string.action_retry else R.string.action_check_new,
                     onRetry = onRetry,
                     onRemove = onRemove,
                     onViewLink = onViewLink,
@@ -326,3 +368,76 @@ private val SiteTones = listOf(Tone.Blue, Tone.Violet, Tone.Teal, Tone.Pink)
 /** "imgur" becomes "Imgur"; a host such as "upload.wikimedia.org" is shown as it is. */
 internal fun String.displayName(): String =
     if ('.' in this) this else replaceFirstChar { it.uppercase() }
+
+/** The three-dot button on Home: export every link to a text file, or import links from one. */
+@Composable
+private fun LinksMenu(onExport: () -> Unit, onImport: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_links_menu))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_export_links)) },
+                leadingIcon = { Icon(Icons.Filled.FileUpload, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onExport()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_import_links)) },
+                leadingIcon = { Icon(Icons.Filled.FileDownload, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onImport()
+                },
+            )
+        }
+    }
+}
+
+/** Progress and the outcome of an export or an import. */
+@Composable
+private fun TransferDialog(state: HomeViewModel.Transfer, onDismiss: () -> Unit) {
+    when (state) {
+        is HomeViewModel.Transfer.Importing -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.import_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
+                    Text(stringResource(R.string.import_progress, state.done, state.total))
+                    LinearProgressIndicator(progress = { if (state.total == 0) 1f else state.done.toFloat() / state.total }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {},
+        )
+        is HomeViewModel.Transfer.Imported -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(R.string.import_done_title)) },
+            text = {
+                val result = state.result
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
+                    if (result.found == 0) Text(stringResource(R.string.import_none))
+                    if (result.added > 0) Text(pluralStringResource(R.plurals.import_added, result.added, result.added))
+                    if (result.duplicates > 0) Text(stringResource(R.string.import_duplicates, result.duplicates))
+                    if (result.unsupported > 0) Text(stringResource(R.string.import_unsupported, result.unsupported))
+                    if (result.notLinks > 0) Text(stringResource(R.string.import_not_links, result.notLinks))
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
+        )
+        is HomeViewModel.Transfer.Exported -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(R.string.action_export_links)) },
+            text = { Text(pluralStringResource(R.plurals.export_done, state.count, state.count)) },
+            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
+        )
+        HomeViewModel.Transfer.Failed -> AlertDialog(
+            onDismissRequest = onDismiss,
+            text = { Text(stringResource(R.string.transfer_failed)) },
+            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
+        )
+    }
+}

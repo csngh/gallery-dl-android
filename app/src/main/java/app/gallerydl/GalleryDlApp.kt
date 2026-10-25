@@ -38,9 +38,13 @@ class AppContainer(context: Context) {
     val options: StateFlow<GalleryDlOptions?> = settingsRepository.options.stateIn(appScope, SharingStarted.Eagerly, null)
     val destination: StateFlow<DownloadDestination?> = settingsRepository.destination.stateIn(appScope, SharingStarted.Eagerly, null)
     val startupSound: StateFlow<Boolean> = settingsRepository.startupSound.stateIn(appScope, SharingStarted.Eagerly, true)
+    val folderColumns: StateFlow<Int> = settingsRepository.folderColumns.stateIn(appScope, SharingStarted.Eagerly, 3)
+    val livePreviews: StateFlow<Boolean> = settingsRepository.livePreviews.stateIn(appScope, SharingStarted.Eagerly, true)
     val cookiesCount: StateFlow<Int> = settingsRepository.cookiesCount.stateIn(appScope, SharingStarted.Eagerly, 0)
     val urlValidator = UrlValidator(pythonBridge)
-    val libraryRepository = LibraryRepository(database.libraryDao(), context.contentResolver)
+    val thumbnailCache = app.gallerydl.data.ThumbnailCache(context)
+    val previewStripCache = app.gallerydl.data.PreviewStripCache(context)
+    val libraryRepository = LibraryRepository(database.libraryDao(), context.contentResolver, thumbnailCache, previewStripCache)
     val downloadRepository =
         DownloadRepository(
             database.taskDao(),

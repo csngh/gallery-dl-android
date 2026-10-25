@@ -70,6 +70,11 @@ class DownloadRepository(
         if (dao.replaceLink(id, url, site) > 0) scheduleDrain()
     }
 
+    /** The Renew button: every link checks for new files, and links not yet started begin. */
+    suspend fun renewAll() {
+        if (dao.renewAll() > 0) scheduleDrain()
+    }
+
     suspend fun retryAllFailed() {
         dao.requeueFailed()
         scheduleDrain()
@@ -116,11 +121,19 @@ class DownloadRepository(
 class LibraryRepository(
     private val dao: LibraryDao,
     private val resolver: ContentResolver,
+    private val thumbnails: ThumbnailCache,
+    private val previews: PreviewStripCache,
 ) {
     fun observeFolders(query: String) = dao.observeFolders(query)
     fun observeItems(folderId: Long, query: String) = dao.observeItems(folderId, query)
+    fun observeVideos() = dao.observeVideos()
 
     suspend fun addItem(item: LibraryItem) = dao.insertItem(item)
+
+    fun observeFolderTag(folderId: Long) = dao.observeFolderTag(folderId)
+
+    /** Gives a folder a tag, or takes it off when [tag] is blank. Long tags are cut to 40 characters. */
+    suspend fun setFolderTag(folderId: Long, tag: String) = dao.setFolderTag(folderId, tag.trim().take(40).ifEmpty { null })
 
     /** Returns the id of the folder called [name], creating it if needed. */
     suspend fun ensureFolder(name: String): Long {
@@ -140,7 +153,16 @@ class LibraryRepository(
 
     /** Drops library entries whose file was deleted outside the app. */
     suspend fun pruneMissing() = withContext(Dispatchers.IO) {
-        dao.allItems().filterNot { exists(Uri.parse(it.contentUri)) }.forEach { dao.deleteItem(it) }
+        val all = dao.allItems()
+        all.filterNot { exists(Uri.parse(it.contentUri)) }.forEach {
+            thumbnails.delete(listOf(it.id))
+            previews.delete(listOf(it.id))
+            dao.deleteItem(it)
+        }
+        // Thumbnails whose item is gone (for example after a reinstall) are cleaned up here too.
+        val remaining = dao.allItems().map { it.id }.toSet()
+        thumbnails.prune(remaining)
+        previews.prune(remaining)
     }
 
     /** Emits whenever MediaStore reports a change, e.g. a file removed in another app. */
@@ -164,6 +186,8 @@ class LibraryRepository(
                 DocumentsContract.deleteDocument(resolver, uri)
             }
         }
+        thumbnails.delete(listOf(item.id))
+        previews.delete(listOf(item.id))
         dao.deleteItem(item)
     }
 

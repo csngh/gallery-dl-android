@@ -25,3 +25,13 @@ captures/
 # OS
 .DS_Store
 *.log
+
+# iOS (generated or fetched by ios/scripts/setup.sh)
+ios/Python.xcframework/
+ios/app_packages/
+ios/.venv-setup/
+ios/GalleryDL.xcodeproj/
+ios/GalleryDL/Info.plist
+xcuserdata/
+DerivedData/
+ios/dist/

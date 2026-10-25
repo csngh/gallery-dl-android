@@ -32,10 +32,16 @@ class SettingsViewModel(
     val destination: StateFlow<DownloadDestination?>,
     val cookiesCount: StateFlow<Int>,
     val startupSound: StateFlow<Boolean>,
+    val livePreviews: StateFlow<Boolean>,
+    private val thumbnails: app.gallerydl.data.ThumbnailCache,
+    private val previewStrips: app.gallerydl.data.PreviewStripCache,
 ) : ViewModel() {
 
     private val _cookieError = MutableStateFlow<CookieImport?>(null)
     val cookieError: StateFlow<CookieImport?> = _cookieError.asStateFlow()
+
+    private val _thumbnailBytes = MutableStateFlow<Long?>(null)
+    val thumbnailBytes: StateFlow<Long?> = _thumbnailBytes.asStateFlow()
 
     private val _recordsBytes = MutableStateFlow<Long?>(null)
     val recordsBytes: StateFlow<Long?> = _recordsBytes.asStateFlow()
@@ -55,10 +61,23 @@ class SettingsViewModel(
     }
 
     private fun refreshRecords() {
-        viewModelScope.launch { _recordsBytes.value = settings.recordsBytes() }
+        viewModelScope.launch {
+            _recordsBytes.value = settings.recordsBytes()
+            _thumbnailBytes.value = withContext(Dispatchers.IO) { thumbnails.sizeBytes() + previewStrips.sizeBytes() }
+        }
+    }
+
+    /** Forces every thumbnail to be made again the next time the library needs it. */
+    fun clearThumbnails() = viewModelScope.launch {
+        withContext(Dispatchers.IO) {
+            thumbnails.clear()
+            previewStrips.clear()
+        }
+        refreshRecords()
     }
 
     fun setStartupSound(on: Boolean) = viewModelScope.launch { settings.setStartupSound(on) }
+    fun setLivePreviews(on: Boolean) = viewModelScope.launch { settings.setLivePreviews(on) }
     fun setApiRest(on: Boolean) = viewModelScope.launch { settings.setApiRest(on) }
     fun setSleepRequestEnabled(on: Boolean) = viewModelScope.launch { settings.setSleepRequestEnabled(on) }
     fun setSleepRequest(value: String) = viewModelScope.launch { settings.setSleepRequest(value) }

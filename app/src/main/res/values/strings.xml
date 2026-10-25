@@ -32,6 +32,8 @@
 
     <string name="action_cancel">Cancel</string>
     <string name="action_retry">Retry</string>
+    <string name="action_renew">Renew all links</string>
+    <string name="action_check_new">Check for new files</string>
     <string name="action_remove">Remove</string>
     <string name="action_clear_finished">Clear finished</string>
 
@@ -54,11 +56,44 @@
     <string name="search_label">Search</string>
     <string name="action_back">Back</string>
     <string name="action_open">Open</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
     <string name="action_delete">Delete</string>
     <plurals name="folder_items">
         <item quantity="one">%d item</item>
         <item quantity="other">%d items</item>
     </plurals>
+    <string name="previews_preparing">Preparing previews</string>
+    <string name="previews_progress">%1$d of %2$d</string>
+    <string name="action_tag_folder">Tag folder</string>
+    <string name="action_delete_folder">Delete folder</string>
+    <string name="action_remove_tag">Remove tag</string>
+    <string name="tag_folder_title">Tag this folder</string>
+    <string name="tag_label">Tag</string>
+    <string name="action_links_menu">Export or import links</string>
+    <string name="action_export_links">Export links</string>
+    <string name="action_import_links">Import links</string>
+    <string name="export_file_name">gallery-dl-links.txt</string>
+    <plurals name="export_done">
+        <item quantity="one">%d link was exported.</item>
+        <item quantity="other">%d links were exported.</item>
+    </plurals>
+    <string name="export_empty">There are no links to export yet.</string>
+    <string name="transfer_failed">Unable to use this file. Please try another one.</string>
+    <string name="import_title">Importing links</string>
+    <string name="import_progress">%1$d of %2$d checked</string>
+    <string name="import_done_title">Import finished</string>
+    <string name="import_none">No links were found in this file. It should have one link per line.</string>
+    <plurals name="import_added">
+        <item quantity="one">%d link was added. Press Start to download it.</item>
+        <item quantity="other">%d links were added. Press Start to download them.</item>
+    </plurals>
+    <string name="import_duplicates">Already in your list: %d</string>
+    <string name="import_unsupported">On unsupported websites: %d</string>
+    <string name="import_not_links">Lines that were not links: %d</string>
+    <string name="action_ok">OK</string>
+    <string name="action_columns">Columns</string>
+    <string name="columns_option">%d columns</string>
     <string name="selected_count">%d selected</string>
     <string name="delete_folder_title">Delete this folder?</string>
     <plurals name="delete_folder_message">
@@ -180,6 +215,10 @@
     <string name="settings_storage_title">Storage and reset</string>
     <string name="settings_storage_body">Manage what the app keeps on your phone.</string>
     <string name="storage_records">The app\'s records use %s.</string>
+    <string name="storage_thumbnails">The saved thumbnails and preview clips of your library use %s.</string>
+    <string name="action_clear_thumbnails">Clear thumbnail cache</string>
+    <string name="clear_thumbnails_title">Clear the thumbnail cache?</string>
+    <string name="clear_thumbnails_message">This removes the saved thumbnails and preview clips of the pictures and videos in your library. They are made again when needed. Your files are not touched.</string>
     <string name="action_clear_history">Clear finished history</string>
     <string name="action_reset_settings">Reset settings</string>
     <string name="reset_settings_title">Reset all settings?</string>
@@ -208,13 +247,17 @@
 
     <string name="option_startup_sound_title">Startup sound</string>
     <string name="option_startup_sound_body">Plays a short sound while the logo appears when the app opens. It stays silent when your phone is on silent or vibrate.</string>
-    <string name="settings_appearance_title">Startup</string>
-    <string name="settings_appearance_body">What happens when the app opens.</string>
+    <string name="settings_appearance_title">Startup and previews</string>
+    <string name="settings_appearance_body">What happens when the app opens, and how the library looks.</string>
+    <string name="option_live_previews_title">Live previews</string>
+    <string name="option_live_previews_body">Plays a silent, looping preview of each video in the library, from a short clip that is saved once for every video. It pauses when you turn on battery saver.</string>
 
     <string name="channel_progress">Downloads in progress</string>
     <string name="channel_progress_description">Shows the download that is running, with its progress.</string>
     <string name="channel_results">Finished downloads</string>
     <string name="channel_results_description">Tells you when a link has been downloaded or has failed.</string>
+    <string name="notif_previews">Preparing previews</string>
+    <string name="notif_previews_progress">%1$d of %2$d</string>
     <string name="notif_starting">Starting the download</string>
     <string name="notif_file_of">File %1$d of %2$d</string>
     <string name="notif_file">File %d</string>
