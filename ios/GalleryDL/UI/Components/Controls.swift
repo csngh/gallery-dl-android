@@ -323,6 +323,8 @@ struct FilterChip: View {
 /// A screen title bar: large bold title on the left, actions on the right.
 struct TopBar<Leading: View, Trailing: View>: View {
     let title: String
+    /// A small line under the title, such as a tagged folder's own name.
+    var subtitle: String?
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -330,7 +332,12 @@ struct TopBar<Leading: View, Trailing: View>: View {
         HStack(spacing: Spacing.sm) {
             leading
             // A long title (a folder with a tag) shrinks a little and may take a second line instead of being cut off.
-            Text(title).textStyle(.titleLarge).lineLimit(2).minimumScaleFactor(0.7)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).textStyle(.titleLarge).lineLimit(2).minimumScaleFactor(0.7)
+                if let subtitle {
+                    Text(subtitle).textStyle(.bodySmall, color: Brand.onSurfaceVariant).lineLimit(1)
+                }
+            }
             Spacer(minLength: 0)
             trailing
         }

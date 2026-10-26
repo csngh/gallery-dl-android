@@ -34,6 +34,8 @@ final class VideoController: ObservableObject {
         return VideoController.speeds.contains(saved) ? saved : 1.0
     }()
     @Published private(set) var unplayable = false
+    /// Plays the same video again when it ends. Remembered between videos and app launches.
+    @Published private(set) var looping = UserDefaults.standard.bool(forKey: "videoLoop")
     var scrubbing = false
     private var lastScrub = 0.0
 
@@ -61,7 +63,16 @@ final class VideoController: ObservableObject {
             }
         }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.isPlaying = false }
+            Task { @MainActor in
+                guard let self else { return }
+                if self.looping {
+                    // Loop: straight back to the start, at the chosen speed.
+                    self.seek(to: 0)
+                    self.player.rate = Float(self.speed)
+                } else {
+                    self.isPlaying = false
+                }
+            }
         }
         statusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             Task { @MainActor in self?.isPlaying = player.timeControlStatus != .paused }
@@ -75,6 +86,11 @@ final class VideoController: ObservableObject {
     }
 
     func pause() { player.pause() }
+
+    /// Jumps forward or back by `delta` seconds and keeps playing or staying paused as it was.
+    func skip(by delta: Double) {
+        seek(to: min(max(current + delta, 0), duration > 0 ? duration : .greatestFiniteMagnitude))
+    }
 
     func toggle() { isPlaying ? pause() : play() }
 
@@ -92,6 +108,11 @@ final class VideoController: ObservableObject {
         lastScrub = now
         let tolerance = CMTime(seconds: 0.15, preferredTimescale: 600)
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance)
+    }
+
+    func toggleLoop() {
+        looping.toggle()
+        UserDefaults.standard.set(looping, forKey: "videoLoop")
     }
 
     func setSpeed(_ value: Double) {
@@ -155,6 +176,11 @@ struct VideoViewer: View {
     let item: LibraryItem
     let active: Bool
     @Binding var zoomed: Bool
+    /// While locked, every touch is ignored and the controls are hidden, except the button that unlocks.
+    @Binding var locked: Bool
+    /// While locked, a touch shows the unlock button for a moment.
+    @State private var unlockVisible = false
+    @State private var unlockTouches = 0
 
     @StateObject private var controller = VideoController()
     @State private var scale: CGFloat = 1
@@ -165,6 +191,7 @@ struct VideoViewer: View {
     /// Set while a horizontal swipe scrubs through the video: where it started, whether it was playing, how far it moved.
     @State private var scrubStart: (time: Double, wasPlaying: Bool)?
     @State private var scrubDelta = 0.0
+    @State private var landscape = false
 
     private let maxScale: CGFloat = 5
 
@@ -183,24 +210,45 @@ struct VideoViewer: View {
                         .scaleEffect(scale)
                         .offset(offset)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { toggleZoom(in: geo.size) }
-                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { controlsVisible.toggle() } }
-                        .simultaneousGesture(item.isVideo ? zoomGesture(in: geo.size) : nil)
-                        .simultaneousGesture(item.isVideo ? panGesture(in: geo.size) : nil)
+                        .onTapGesture(count: 2) { if !locked { toggleZoom(in: geo.size) } }
+                        .onTapGesture {
+                            if locked { unlockTouches += 1 } else { withAnimation(.easeInOut(duration: 0.2)) { controlsVisible.toggle() } }
+                        }
+                        .simultaneousGesture(item.isVideo && !locked ? zoomGesture(in: geo.size) : nil)
+                        .simultaneousGesture(item.isVideo && !locked ? panGesture(in: geo.size) : nil)
                     if item.isAudio {
                         Image(systemName: "music.note").font(.system(size: 64)).foregroundColor(Brand.onSurfaceVariant).allowsHitTesting(false)
                     }
                     if scrubStart != nil { scrubHud }
-                    if controlsVisible { controls.frame(maxHeight: .infinity, alignment: .bottom) }
+                    if controlsVisible && !locked { controls.frame(maxHeight: .infinity, alignment: .bottom) }
+                    if locked && unlockVisible {
+                        Button {
+                            controlsVisible = true
+                            locked = false
+                        } label: {
+                            Image(systemName: "lock.open.fill").font(.system(size: 26, weight: .medium)).foregroundColor(.white)
+                                .frame(width: 64, height: 64).background(Circle().fill(Color.black.opacity(0.6)))
+                        }
+                        .accessibilityLabel(S.actionUnlock)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 70)
+                    }
                 }
             }
             .clipped()
+            .onChange(of: geo.size) { size in landscape = size.width > size.height }
+            .onChange(of: unlockTouches) { _ in
+                unlockVisible = true
+                let mark = unlockTouches
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { if mark == unlockTouches { unlockVisible = false } }
+            }
         }
         // Swiping sideways on a video scrubs it, so the pager never pages away from a video page.
         // Only the page on screen may lock the pager: neighbours are built in advance and would otherwise lock it too.
         .background { if active { PagerLock(locked: zoomed || item.isVideo || item.isAudio) } }
         .task(id: active) {
             if active {
+                if item.isVideo { ScreenOrientation.allowRotation() }
                 await controller.load(item)
                 #if DEBUG
                 // `-testScrubHud 1` leaves the video paused at the scrub position, so the frame can be checked.
@@ -212,6 +260,13 @@ struct VideoViewer: View {
                     scrubStart = (0, false); scrubDelta = 3; controller.scrubbing = true; controller.scrub(to: 3)
                 }
                 if defaults.object(forKey: "testSeek") != nil { controller.seek(to: defaults.double(forKey: "testSeek")) }
+                // `-testLocked 1` locks the touch inputs, to check the locked screen.
+                if defaults.bool(forKey: "testLocked") { locked = true }
+                // `-testLandscape 1` turns the screen to landscape, like pressing the rotate button.
+                if defaults.bool(forKey: "testLandscape") {
+                    // `-testLandscapeAfter 4` waits that many seconds first, like a person pressing the button later.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + defaults.double(forKey: "testLandscapeAfter")) { ScreenOrientation.rotate(toLandscape: true) }
+                }
                 #else
                 let holdPaused = false
                 #endif
@@ -221,6 +276,7 @@ struct VideoViewer: View {
                 reset()
             }
         }
+        // The screen goes back to portrait when the whole viewer closes (see ViewerOverlay), not when one page goes away.
         .onDisappear { controller.stop() }
     }
 
@@ -304,12 +360,63 @@ struct VideoViewer: View {
     // MARK: Controls
 
     private var controls: some View {
-        HStack(spacing: Spacing.sm) {
+        VStack(spacing: Spacing.xs) {
+            transport
+            seekRow
+        }
+        .padding(.horizontal, Spacing.sm)
+        .padding(.top, Spacing.md)
+        .padding(.bottom, 28)
+        .background(LinearGradient(colors: [.clear, Color.black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+    }
+
+    /// All the buttons in one row, evenly spaced: loop, lock, back 10 s, play or pause, forward 10 s, speed, and for videos
+    /// rotate. The row is capped in width, so it looks the same in portrait and landscape.
+    private var transport: some View {
+        HStack(spacing: 0) {
+            Button { controller.toggleLoop() } label: {
+                Image(systemName: controller.looping ? "repeat.1" : "repeat")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(controller.looping ? Brand.primary : .white).frame(width: 44, height: 48)
+            }
+            .accessibilityLabel(controller.looping ? S.actionLoopOff : S.actionLoopOn)
+            Spacer(minLength: 0)
+            Button { locked = true } label: {
+                Image(systemName: "lock").font(.system(size: 20, weight: .medium)).foregroundColor(.white).frame(width: 44, height: 48)
+            }
+            .accessibilityLabel(S.actionLock)
+            Spacer(minLength: 0)
+            Button { controller.skip(by: -10) } label: {
+                Image(systemName: "gobackward.10").font(.system(size: 24, weight: .regular)).foregroundColor(.white).frame(width: 44, height: 48)
+            }
+            .accessibilityLabel(S.actionSkipBack)
+            Spacer(minLength: 0)
             Button { controller.toggle() } label: {
                 Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 20, weight: .semibold)).foregroundColor(.white).frame(width: 40, height: 40)
+                    .font(.system(size: 28, weight: .semibold)).foregroundColor(.white).frame(width: 56, height: 56)
             }
             .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
+            Spacer(minLength: 0)
+            Button { controller.skip(by: 10) } label: {
+                Image(systemName: "goforward.10").font(.system(size: 24, weight: .regular)).foregroundColor(.white).frame(width: 44, height: 48)
+            }
+            .accessibilityLabel(S.actionSkipForward)
+            Spacer(minLength: 0)
+            speedMenu
+            if item.isVideo {
+                Spacer(minLength: 0)
+                Button { ScreenOrientation.rotate(toLandscape: !landscape) } label: {
+                    Image(systemName: landscape ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 20, weight: .medium)).foregroundColor(.white).frame(width: 44, height: 48)
+                }
+                .accessibilityLabel(landscape ? S.actionExitLandscape : S.actionLandscape)
+            }
+        }
+        .frame(maxWidth: 440)
+    }
+
+    private var seekRow: some View {
+        HStack(spacing: Spacing.sm) {
             Text(format(controller.current)).textStyle(.labelMedium, color: .white).frame(minWidth: 36)
             // Dragging the bar shows the picture at that moment live, like swiping across the video does.
             Slider(
@@ -335,12 +442,7 @@ struct VideoViewer: View {
             )
             .accentColor(Brand.primary)
             Text(format(controller.duration)).textStyle(.labelMedium, color: .white).frame(minWidth: 36)
-            speedMenu
         }
-        .padding(.horizontal, Spacing.sm)
-        .padding(.top, Spacing.md)
-        .padding(.bottom, 28)
-        .background(LinearGradient(colors: [.clear, Color.black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
     }
 
     private var speedMenu: some View {
@@ -356,6 +458,8 @@ struct VideoViewer: View {
                 .padding(.horizontal, 10)
                 .frame(height: 32)
                 .background(Capsule().fill(Color.white.opacity(0.18)))
+                .frame(minWidth: 44, minHeight: 48)
+                .contentShape(Rectangle())
         }
         .accessibilityLabel("Playback speed")
     }

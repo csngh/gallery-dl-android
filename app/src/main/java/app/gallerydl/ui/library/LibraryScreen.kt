@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -85,6 +85,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.gallerydl.R
 import app.gallerydl.data.FolderSummary
+import app.gallerydl.download.folderSubtitle
 import app.gallerydl.download.folderTitle
 import app.gallerydl.data.LibraryItem
 import app.gallerydl.ui.AppViewModelProvider
@@ -98,6 +99,7 @@ import app.gallerydl.ui.components.IconTile
 import app.gallerydl.ui.components.ScreenTitle
 import app.gallerydl.ui.components.TileSize
 import app.gallerydl.ui.theme.Tone
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
 import app.gallerydl.ui.components.CachedThumbnail
@@ -112,7 +114,6 @@ import app.gallerydl.ui.components.ShimmerGrid
 import app.gallerydl.ui.components.softScrollEdges
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.VerticalDivider
@@ -147,6 +148,13 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
     BackHandler(enabled = openFolder != null, onBack = viewModel::back)
 
     val folder = openFolder
+    // The full-screen viewer lives here, above the choice between the one-pane and two-pane layout. Turning a phone to
+    // landscape switches that layout and rebuilds the folder screen; the viewer, and the video playing in it, must not.
+    val viewerItems by viewModel.items.collectAsStateWithLifecycle()
+    var viewerIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    LaunchedEffect(folder?.id) { viewerIndex = null }
+    // Playing previews behind the full-screen viewer would only waste memory.
+    LaunchedEffect(viewerIndex) { previewHost.viewerOpen = viewerIndex != null }
     CompositionLocalProvider(
         LocalPreviewHost provides previewHost,
         LocalThumbnailCache provides viewModel.thumbnails,
@@ -174,14 +182,24 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
                         )
                     }
                 } else {
-                    FolderContent(viewModel, folder, Modifier.weight(0.8f).fillMaxHeight(), showBack = false)
+                    FolderContent(viewModel, folder, Modifier.weight(0.8f).fillMaxHeight(), showBack = false, onOpenViewer = { viewerIndex = it })
                 }
             }
         } else if (folder == null) {
             FoldersContent(viewModel, Modifier.readableWidth())
         } else {
-            FolderContent(viewModel, folder, Modifier.readableWidth(), showBack = true)
+            FolderContent(viewModel, folder, Modifier.readableWidth(), showBack = true, onOpenViewer = { viewerIndex = it })
         }
+    }
+    val openIndex = viewerIndex
+    val viewable = viewerItems
+    if (openIndex != null && viewable != null) {
+        Viewer(
+            items = viewable,
+            startIndex = openIndex,
+            onDismiss = { viewerIndex = null },
+            onDelete = viewModel::deleteItem,
+        )
     }
     }
 }
@@ -202,13 +220,18 @@ private fun FoldersContent(
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val videosByFolder by viewModel.videosByFolder.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
+    val listColumns by viewModel.libraryColumns.collectAsStateWithLifecycle()
     var folderToDelete by remember { mutableStateOf<FolderSummary?>(null) }
     var folderActions by remember { mutableStateOf<FolderSummary?>(null) }
     var folderToTag by remember { mutableStateOf<FolderSummary?>(null) }
     val foldersGridState = rememberLazyGridState()
 
     Column(modifier) {
-        TopAppBar(title = { ScreenTitle(stringResource(R.string.nav_library)) })
+        TopAppBar(
+            title = { ScreenTitle(stringResource(R.string.nav_library)) },
+            // The side list of the wide layout is always one column, so it has nothing to choose.
+            actions = { if (!singleColumn) ColumnsMenu(columns = listColumns, onSelect = viewModel::setLibraryColumns, options = 2..3) },
+        )
         PreviewProgressBanner(viewModel.previewStrips)
         // The search box is hidden for now; SearchField and the view-model search stay for when it comes back.
         if (SEARCH_VISIBLE) SearchField(query, viewModel::onQueryChange)
@@ -226,7 +249,7 @@ private fun FoldersContent(
             else -> LazyVerticalGrid(
                 state = foldersGridState,
                 modifier = Modifier.softScrollEdges(foldersGridState),
-                columns = if (singleColumn) GridCells.Fixed(1) else GridCells.Adaptive(folderMinSize),
+                columns = GridCells.Fixed(if (singleColumn) 1 else listColumns),
                 contentPadding = PaddingValues(Spacing.Md),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
                 verticalArrangement = Arrangement.spacedBy(Spacing.Md),
@@ -246,7 +269,7 @@ private fun FoldersContent(
 
     folderActions?.let { folder ->
         FolderActionsDialog(
-            title = folder.title,
+            title = folder.displayName,
             onTag = {
                 folderToTag = folder
                 folderActions = null
@@ -314,6 +337,7 @@ private fun FolderCard(
             }
             // A folder with videos plays short pieces of a few of them, picked at random, over its cover.
             LivePreview(key = "folder-${folder.id}", clips = videos, modifier = Modifier.fillMaxSize())
+            // Name and count on the bottom strip. Long-pressing the card tags or deletes the folder.
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
@@ -325,13 +349,17 @@ private fun FolderCard(
                     folder.title,
                     style = MaterialTheme.typography.titleSmall,
                     color = Color.White,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // With a tag as the title, the folder's own name follows the count.
+                val count = pluralStringResource(R.plurals.folder_items, folder.itemCount, folder.itemCount)
                 Text(
-                    pluralStringResource(R.plurals.folder_items, folder.itemCount, folder.itemCount),
+                    folderSubtitle(folder.displayName, folder.tag)?.let { "$count · $it" } ?: count,
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -344,30 +372,38 @@ private fun FolderCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modifier: Modifier, showBack: Boolean) {
+private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modifier: Modifier, showBack: Boolean, onOpenViewer: (Int) -> Unit) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val query by viewModel.itemQuery.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
-    var viewerIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     val itemsGridState = rememberLazyGridState()
     val selecting = selection.isNotEmpty()
     val columns by viewModel.folderColumns.collectAsStateWithLifecycle()
     val tag by viewModel.openFolderTag.collectAsStateWithLifecycle()
     var tagging by remember { mutableStateOf(false) }
-    // Playing previews behind the full-screen viewer would only waste memory.
-    val previewHost = LocalPreviewHost.current
-    LaunchedEffect(viewerIndex) { previewHost?.viewerOpen = viewerIndex != null }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { previewHost?.viewerOpen = false } }
 
     Column(modifier) {
         TopAppBar(
             title = {
-                Text(
-                    if (selecting) stringResource(R.string.selected_count, selection.size) else folderTitle(folder.name, tag),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column {
+                    Text(
+                        if (selecting) stringResource(R.string.selected_count, selection.size) else folderTitle(folder.name, tag),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // The folder's own name sits under its tag.
+                    val subtitle = if (selecting) null else folderSubtitle(folder.name, tag)
+                    if (subtitle != null) {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             },
             navigationIcon = {
                 if (selecting) {
@@ -413,22 +449,12 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
                         item = item,
                         selected = item.id in selection,
                         onClick = {
-                            if (selecting) viewModel.toggleSelected(item.id) else viewerIndex = current.indexOf(item)
+                            if (selecting) viewModel.toggleSelected(item.id) else onOpenViewer(current.indexOf(item))
                         },
                         onLongClick = { viewModel.toggleSelected(item.id) },
                     )
                 }
             }
-        }
-
-        val index = viewerIndex
-        if (index != null && current != null) {
-            Viewer(
-                items = current,
-                startIndex = index,
-                onDismiss = { viewerIndex = null },
-                onDelete = viewModel::deleteItem,
-            )
         }
     }
 
@@ -513,14 +539,14 @@ private fun TagDialog(initial: String?, onSave: (String) -> Unit, onDismiss: () 
 
 /** The grid button in a folder's top bar: choose how many columns the files are shown in (2 to 4). */
 @Composable
-private fun ColumnsMenu(columns: Int, onSelect: (Int) -> Unit) {
+private fun ColumnsMenu(columns: Int, onSelect: (Int) -> Unit, options: IntRange = 2..4) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Filled.GridView, contentDescription = stringResource(R.string.action_columns))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            (2..4).forEach { count ->
+            options.forEach { count ->
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.columns_option, count)) },
                     trailingIcon = {
@@ -595,11 +621,18 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
     var itemToDelete by remember { mutableStateOf<LibraryItem?>(null) }
     // A zoomed-in video is dragged around, and a video is scrubbed by swiping, so the pager stays put on those pages.
     var zoomed by remember { mutableStateOf(false) }
+    // The touch lock of the video player: while on, the back button and the top bar are off as well.
+    var locked by remember { mutableStateOf(false) }
     val onPlayablePage = current?.mimeType?.let { it.startsWith("video/") || it.startsWith("audio/") } == true
+    // Closing the viewer gives the screen back to the system's own rotation (a video may have turned it to landscape).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val activity = context as? android.app.Activity
+        onDispose { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !locked),
     ) {
         // Let the dialog window cover the status bar too, and drop the dim layer.
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
@@ -607,6 +640,10 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
             window?.let {
                 it.setDimAmount(0f)
                 it.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                // Without these the window is placed inside the area between the system bars and ends up pushed down,
+                // so its bottom (the video controls) runs off the screen.
+                val screen = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                it.setFlags(screen, screen)
                 WindowCompat.setDecorFitsSystemWindows(it, false)
             }
         }
@@ -622,6 +659,8 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
                     active = page == pagerState.currentPage,
                     onZoomedChange = { zoomed = it },
                     onOpen = { openExternally(context, items[page]) },
+                    locked = locked,
+                    onLockedChange = { locked = it },
                 )
             }
             itemToDelete?.let { item ->
@@ -636,32 +675,53 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
                     onDismiss = { itemToDelete = null },
                 )
             }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))
-                    .padding(horizontal = Spacing.Xs, vertical = Spacing.Xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val tint = IconButtonDefaults.iconButtonColors(contentColor = Color.White)
-                IconButton(onClick = onDismiss, colors = tint) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                }
-                Text(
-                    current?.displayName.orEmpty(),
-                    modifier = Modifier.weight(1f),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (current != null) {
-                    IconButton(onClick = { openExternally(context, current) }, colors = tint) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = stringResource(R.string.action_open))
+            if (!locked) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))
+                        .padding(horizontal = Spacing.Xs, vertical = Spacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val tint = IconButtonDefaults.iconButtonColors(contentColor = Color.White)
+                    IconButton(onClick = onDismiss, colors = tint) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
-                    IconButton(onClick = { itemToDelete = current }, colors = ActionColors.negativeIcon()) {
-                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.action_delete))
+                    Text(
+                        current?.displayName.orEmpty(),
+                        modifier = Modifier.weight(1f),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (current != null) {
+                        // Open and Delete share one menu: deleting a file is not a one-tap icon beside a harmless one.
+                        var menuOpen by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }, colors = tint) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more))
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_open_with)) },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        openExternally(context, current)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_delete), color = ActionColors.Negative) },
+                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = ActionColors.Negative) },
+                                    onClick = {
+                                        menuOpen = false
+                                        itemToDelete = current
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -670,9 +730,9 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
 }
 
 @Composable
-private fun ViewerPage(item: LibraryItem, active: Boolean, onZoomedChange: (Boolean) -> Unit, onOpen: () -> Unit) {
+private fun ViewerPage(item: LibraryItem, active: Boolean, onZoomedChange: (Boolean) -> Unit, onOpen: () -> Unit, locked: Boolean, onLockedChange: (Boolean) -> Unit) {
     if (item.mimeType.startsWith("video/") || item.mimeType.startsWith("audio/")) {
-        VideoViewer(Uri.parse(item.contentUri), isAudio = item.mimeType.startsWith("audio/"), active = active, onZoomedChange = onZoomedChange, onOpen = onOpen)
+        VideoViewer(Uri.parse(item.contentUri), isAudio = item.mimeType.startsWith("audio/"), active = active, onZoomedChange = onZoomedChange, onOpen = onOpen, locked = locked, onLockedChange = onLockedChange)
         return
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

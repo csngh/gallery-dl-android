@@ -1,6 +1,10 @@
 package app.gallerydl.ui.components
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.SystemClock
 import android.view.TextureView
@@ -15,11 +19,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -27,10 +33,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +50,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -61,12 +76,17 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -103,6 +123,8 @@ class VideoController(context: Context) {
     var unplayable by mutableStateOf(false); private set
     var videoSize by mutableStateOf(VideoSize.UNKNOWN); private set
     var speed by mutableFloatStateOf(prefs.getFloat("speed", 1f).takeIf { it in SPEEDS } ?: 1f); private set
+    /** Plays the same video again when it ends. Remembered between videos and app launches. */
+    var looping by mutableStateOf(prefs.getBoolean("loop", false)); private set
     var scrubbing = false
     private var lastScrub = 0L
 
@@ -116,7 +138,16 @@ class VideoController(context: Context) {
         override fun onPlayerError(error: PlaybackException) { unplayable = true }
     }
 
-    init { player.addListener(listener) }
+    init {
+        player.addListener(listener)
+        player.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+
+    fun toggleLoop() {
+        looping = !looping
+        prefs.edit().putBoolean("loop", looping).apply()
+        player.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
 
     fun load(uri: Uri) {
         if (player.currentMediaItem != null) return
@@ -136,6 +167,12 @@ class VideoController(context: Context) {
     }
 
     fun pause() = player.pause()
+
+    /** Jumps forward or back by [delta] seconds and keeps playing or staying paused as it was. */
+    fun skip(delta: Float) {
+        val end = if (duration > 0) duration else Float.MAX_VALUE
+        seek((current + delta).coerceIn(0f, end))
+    }
 
     fun toggle() = if (player.isPlaying) pause() else play()
 
@@ -173,6 +210,7 @@ class VideoController(context: Context) {
 }
 
 private const val MAX_SCALE = 5f
+private const val SKIP_SECONDS = 10f
 
 /**
  * The viewer's video (or audio) player: pinch to zoom, drag to pan, double-tap to zoom in or out, a sideways swipe or
@@ -187,6 +225,9 @@ fun VideoViewer(
     onZoomedChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    /** While locked, every touch is ignored and the controls are hidden, except the button that unlocks. */
+    locked: Boolean = false,
+    onLockedChange: (Boolean) -> Unit = {},
 ) {
     if (!active) {
         // Pages next to the one on screen only show black; nothing is decoded until the page is the current one.
@@ -199,10 +240,35 @@ fun VideoViewer(
     val view = LocalView.current
     val onZoom by rememberUpdatedState(onZoomedChange)
 
+    val configuration = LocalConfiguration.current
+    val activity = remember(context) { context.findActivity() }
+    val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // The rotate button is for phones; a TV or a big tablet is already wide.
+    val canRotate = activity != null && configuration.smallestScreenWidthDp < 600
+
+    // Keeps the controls clear of the gesture bar or navigation buttons. The viewer is a dialog window, which can report
+    // no bottom inset, so the activity's own navigation bar height is the fallback.
+    val density = LocalDensity.current
+    val dialogBottom = WindowInsets.safeDrawing.getBottom(density)
+    val activityBottom = activity?.window?.decorView?.let {
+        ViewCompat.getRootWindowInsets(it)?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom
+    } ?: 0
+    val bottomInset = with(density) { (if (dialogBottom > 0) dialogBottom else activityBottom).toDp() }
+
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
     var controlsVisible by remember { mutableStateOf(true) }
+    // While locked, a touch shows the unlock button for a moment; the counter restarts that moment.
+    var unlockTouches by remember { mutableIntStateOf(0) }
+    var unlockVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(unlockTouches) {
+        if (unlockTouches > 0) {
+            unlockVisible = true
+            delay(2_500)
+            unlockVisible = false
+        }
+    }
     var scrubStart by remember { mutableStateOf<Float?>(null) }
     var scrubDelta by remember { mutableFloatStateOf(0f) }
     var resumeAfterScrub by remember { mutableStateOf(false) }
@@ -217,6 +283,8 @@ fun VideoViewer(
             lifecycle.removeObserver(observer)
             view.keepScreenOn = false
             onZoom(false)
+            // The screen is given back to the system's rotation when the whole viewer closes, not here: a page that is
+            // only briefly inactive (a neighbour taking over) must not throw a landscape video back to portrait.
             controller.release()
         }
     }
@@ -313,14 +381,19 @@ fun VideoViewer(
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { controlsVisible = !controlsVisible },
-                        onDoubleTap = { if (scale > 1.02f) reset() else setScale(2.5f) },
-                    )
+                .pointerInput(locked) {
+                    if (locked) {
+                        // Locked: a touch only shows the unlock button.
+                        detectTapGestures(onTap = { unlockTouches++ })
+                    } else {
+                        detectTapGestures(
+                            onTap = { controlsVisible = !controlsVisible },
+                            onDoubleTap = { if (scale > 1.02f) reset() else setScale(2.5f) },
+                        )
+                    }
                 }
-                .pointerInput(isAudio) {
-                    if (isAudio) return@pointerInput
+                .pointerInput(isAudio, locked) {
+                    if (isAudio || locked) return@pointerInput
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
                         var moved = Offset.Zero
@@ -398,15 +471,40 @@ fun VideoViewer(
             }
         }
 
-        if (controlsVisible) {
+        if (locked && unlockVisible) {
+            IconButton(
+                onClick = {
+                    controlsVisible = true
+                    onLockedChange(false)
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = bottomInset + 56.dp)
+                    .size(64.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+            ) {
+                Icon(Icons.Filled.LockOpen, contentDescription = stringResource(R.string.action_unlock), tint = Color.White, modifier = Modifier.size(30.dp))
+            }
+        }
+
+        if (controlsVisible && !locked) {
             Controls(
                 controller = controller,
+                onLock = { onLockedChange(true) },
                 onScrubStart = { beginScrub() },
                 onScrub = { value ->
                     scrubDelta = value - (scrubStart ?: value)
                     controller.scrub(value)
                 },
                 onScrubEnd = { endScrub() },
+                landscape = landscape,
+                bottomInset = bottomInset,
+                onRotate = if (canRotate) {
+                    {
+                        activity?.requestedOrientation =
+                            if (landscape) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    }
+                } else null,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -420,49 +518,104 @@ private fun Controls(
     onScrubStart: () -> Unit,
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
+    landscape: Boolean,
+    onRotate: (() -> Unit)?,
+    bottomInset: Dp,
+    onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
-            .navigationBarsPadding()
+            .padding(bottom = bottomInset)
             .padding(horizontal = Spacing.Sm)
             .padding(top = Spacing.Md, bottom = Spacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
     ) {
-        IconButton(onClick = { controller.toggle() }) {
-            Icon(
-                if (controller.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = stringResource(if (controller.isPlaying) R.string.action_pause else R.string.action_play),
-                tint = Color.White,
-                modifier = Modifier.size(28.dp),
-            )
-        }
-        Text(formatTime(controller.current), color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.widthIn(min = 36.dp))
-        var dragging by remember { mutableStateOf(false) }
-        val end = maxOf(controller.duration, 0.1f)
-        Slider(
-            value = controller.current.coerceIn(0f, end),
-            onValueChange = { value ->
-                if (!dragging) {
-                    dragging = true
-                    onScrubStart()
+        // All the buttons in one row, evenly spaced: loop, lock, back 10 s, play or pause, forward 10 s, speed, and on phones
+        // rotate. The row is capped in width, so it looks the same in portrait and landscape.
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Row(
+                Modifier.widthIn(max = 440.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                IconButton(onClick = controller::toggleLoop, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        if (controller.looping) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                        contentDescription = stringResource(if (controller.looping) R.string.action_loop_off else R.string.action_loop_on),
+                        tint = if (controller.looping) MaterialTheme.colorScheme.primary else Color.White,
+                    )
                 }
-                onScrub(value)
-            },
-            onValueChangeFinished = {
-                dragging = false
-                onScrubEnd()
-            },
-            valueRange = 0f..end,
-            modifier = Modifier.weight(1f),
-            colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary),
-        )
-        Text(formatTime(controller.duration), color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.widthIn(min = 36.dp))
-        SpeedMenu(controller)
+                IconButton(onClick = onLock, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Filled.Lock, contentDescription = stringResource(R.string.action_lock), tint = Color.White)
+                }
+                IconButton(onClick = { controller.skip(-SKIP_SECONDS) }, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Filled.Replay10, contentDescription = stringResource(R.string.action_skip_back), tint = Color.White, modifier = Modifier.size(30.dp))
+                }
+                IconButton(onClick = { controller.toggle() }, modifier = Modifier.size(56.dp)) {
+                    Icon(
+                        if (controller.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(if (controller.isPlaying) R.string.action_pause else R.string.action_play),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                IconButton(onClick = { controller.skip(SKIP_SECONDS) }, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Filled.Forward10, contentDescription = stringResource(R.string.action_skip_forward), tint = Color.White, modifier = Modifier.size(30.dp))
+                }
+                SpeedMenu(controller)
+                if (onRotate != null) {
+                    IconButton(onClick = onRotate, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            if (landscape) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                            contentDescription = stringResource(if (landscape) R.string.action_exit_landscape else R.string.action_landscape),
+                            tint = Color.White,
+                        )
+                    }
+                }
+            }
+        }
+        // Position, seek bar and length.
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+        ) {
+            SeekRow(controller, onScrubStart, onScrub, onScrubEnd)
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RowScope.SeekRow(
+    controller: VideoController,
+    onScrubStart: () -> Unit,
+    onScrub: (Float) -> Unit,
+    onScrubEnd: () -> Unit,
+) {
+    Text(formatTime(controller.current), color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.widthIn(min = 36.dp))
+    var dragging by remember { mutableStateOf(false) }
+    val end = maxOf(controller.duration, 0.1f)
+    Slider(
+        value = controller.current.coerceIn(0f, end),
+        onValueChange = { value ->
+            if (!dragging) {
+                dragging = true
+                onScrubStart()
+            }
+            onScrub(value)
+        },
+        onValueChangeFinished = {
+            dragging = false
+            onScrubEnd()
+        },
+        valueRange = 0f..end,
+        modifier = Modifier.weight(1f),
+        colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary),
+    )
+    Text(formatTime(controller.duration), color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.widthIn(min = 36.dp))
 }
 
 @Composable
@@ -471,13 +624,19 @@ private fun SpeedMenu(controller: VideoController) {
     Box {
         Box(
             Modifier
-                .height(32.dp)
-                .background(Color.White.copy(alpha = 0.18f), CircleShape)
-                .clickable { expanded = true }
-                .padding(horizontal = 10.dp),
+                .height(44.dp)
+                .widthIn(min = 44.dp)
+                .clickable { expanded = true },
             contentAlignment = Alignment.Center,
         ) {
-            Text(speedLabel(controller.speed), color = Color.White, style = MaterialTheme.typography.labelLarge)
+            Text(
+                speedLabel(controller.speed),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.18f), CircleShape)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             VideoController.SPEEDS.forEach { value ->
@@ -500,4 +659,13 @@ private fun formatTime(seconds: Float): String {
     if (!seconds.isFinite() || seconds < 0) return "0:00"
     val total = Math.round(seconds)
     return "%d:%02d".format(total / 60, total % 60)
+}
+
+private fun Context.findActivity(): Activity? {
+    var current = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
 }

@@ -24,7 +24,7 @@ object AppViewModelProvider {
         }
         initializer {
             val c = app().container
-            LibraryViewModel(c.libraryRepository, c.livePreviews, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.settingsRepository)
+            LibraryViewModel(c.libraryRepository, c.livePreviews, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.libraryColumns, c.settingsRepository)
         }
         initializer { ActivityViewModel(app().container.downloadRepository) }
         initializer {

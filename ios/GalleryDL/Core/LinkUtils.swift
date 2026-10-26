@@ -64,10 +64,16 @@ func linkDisplayName(_ url: String?, fallback: String) -> String {
     return name.isEmpty ? fallback : name
 }
 
-/// The name a folder shows, followed by " / tag" when the user gave it a tag.
+/// The title a folder shows: its tag when the user gave it one (the name moves to the line below), its name otherwise.
 func folderTitle(_ displayName: String, _ tag: String?) -> String {
     guard let tag = tag?.trimmingCharacters(in: .whitespaces), !tag.isEmpty else { return displayName }
-    return "\(displayName) / \(tag)"
+    return tag
+}
+
+/// The folder's own name, shown beside the item count while its tag is the title; nil when the name is the title.
+func folderSubtitle(_ displayName: String, _ tag: String?) -> String? {
+    guard let tag = tag?.trimmingCharacters(in: .whitespaces), !tag.isEmpty else { return nil }
+    return displayName
 }
 
 /// Folder name for one link: host plus the last two path segments, e.g. "imgur.com_a_AbC123".

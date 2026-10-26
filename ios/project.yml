@@ -28,8 +28,11 @@ targets:
           UIColorName: LaunchBackground
         UIAppFonts:
           - inter_variable.ttf
+        # Portrait everywhere; the video viewer also allows landscape (see ScreenOrientation).
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Dark
     settings:
       base:

@@ -32,7 +32,8 @@ final class StorageMonitor: ObservableObject {
     private func usedFraction() -> Double {
         #if DEBUG
         // `-testStorageFull 1` pretends the storage is 99.5% full, to check the warning and the paused queue.
-        if UserDefaults.standard.bool(forKey: "testStorageFull") { return 0.995 }
+        // `-testStorageFull NO` pretends there is plenty of space (the simulator reads the Mac's own disk).
+        if UserDefaults.standard.object(forKey: "testStorageFull") != nil { return UserDefaults.standard.bool(forKey: "testStorageFull") ? 0.995 : 0.5 }
         #endif
         guard let attributes = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
               let total = (attributes[.systemSize] as? NSNumber)?.doubleValue, total > 0,

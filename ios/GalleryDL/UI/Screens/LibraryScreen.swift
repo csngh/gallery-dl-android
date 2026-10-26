@@ -160,6 +160,7 @@ struct TagDialog: View {
 
 private struct FoldersContent: View {
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var ui: UIState
     @ObservedObject var model: LibraryViewModel
 
@@ -167,7 +168,7 @@ private struct FoldersContent: View {
         let folders = store.folderSummaries(query: model.query)
         let videosByFolder = Dictionary(grouping: store.items.filter { $0.isVideo && $0.folderId != nil }, by: { $0.folderId! })
         VStack(spacing: 0) {
-            TopBar(title: S.navLibrary)
+            TopBar(title: S.navLibrary) { listColumnsMenu }
             PreviewProgressBanner()
             if searchVisible { SearchField(text: $model.query) }
             if !store.loaded {
@@ -180,7 +181,7 @@ private struct FoldersContent: View {
                 }
             } else {
                 SoftScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Spacing.md)], spacing: Spacing.md) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Spacing.md), count: settings.libraryColumns), spacing: Spacing.md) {
                         ForEach(folders) { folder in
                             FolderCard(folder: folder, videos: videosByFolder[folder.id] ?? [])
                                 .onTapGesture { model.open(folder) }
@@ -193,10 +194,32 @@ private struct FoldersContent: View {
         }
     }
 
+    /// The grid button in the Library's top bar: choose how many columns the folders are shown in (2 or 3).
+    private var listColumnsMenu: some View {
+        Menu {
+            ForEach(2...3, id: \.self) { count in
+                Button { settings.libraryColumns = count } label: {
+                    if count == settings.libraryColumns {
+                        Label(S.columnsOption(count), systemImage: "checkmark")
+                    } else {
+                        Text(S.columnsOption(count))
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(Brand.onSurfaceVariant)
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(S.actionColumns)
+    }
+
     /// What long-pressing a folder offers: give it a tag, or delete it.
     private func showActions(_ folder: FolderSummary) {
         ui.present(FolderActionsDialog(
-            title: folder.title,
+            title: folder.displayName,
             onTag: { ui.present(TagDialog(folderId: folder.id, initial: folder.tag)) },
             onDelete: { confirmDelete(folder) },
         ))
@@ -229,9 +252,12 @@ private struct FolderCard: View {
             // A folder with videos plays short pieces of a few of them, picked at random, over its cover.
             .overlay(LivePreview(key: "folder-\(folder.id)", clips: videos))
             .overlay(
+                // Name and count on the bottom strip. Long-pressing the card tags or deletes the folder.
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(folder.title).textStyle(.titleSmall, color: .white).lineLimit(2)
-                    Text(S.folderItems(folder.itemCount)).textStyle(.labelMedium, color: Color.white.opacity(0.8))
+                    Text(folder.title).textStyle(.titleSmall, color: .white).lineLimit(1)
+                    // With a tag as the title, the folder's own name follows the count.
+                    Text(folderSubtitle(folder.displayName, folder.tag).map { "\(S.folderItems(folder.itemCount)) · \($0)" } ?? S.folderItems(folder.itemCount))
+                        .textStyle(.labelMedium, color: Color.white.opacity(0.8)).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Spacing.md)
@@ -274,6 +300,7 @@ private struct FolderContent: View {
         VStack(spacing: 0) {
             TopBar(
                 title: selecting ? S.selectedCount(model.selection.count) : folderTitle(folder.name, tag),
+                subtitle: selecting ? nil : folderSubtitle(folder.name, tag),
                 leading: {
                     IconButton(symbol: selecting ? "xmark" : "chevron.left", color: Brand.onSurface,
                                label: selecting ? S.actionClose : S.actionBack) { model.back() }
@@ -404,6 +431,8 @@ struct ViewerOverlay: View {
     @State private var dragY: CGFloat = 0
     /// True while the current video is zoomed in: paging, the edge swipe and swipe-down are off so drags pan the picture.
     @State private var zoomed = false
+    /// The video player's touch lock: the top bar, swipe down and swipe back are off too.
+    @State private var locked = false
 
     var body: some View {
         let items = store.items(inFolder: request.folderId, query: request.query)
@@ -411,21 +440,29 @@ struct ViewerOverlay: View {
         // The edge swipe is only for pictures: dragging a playing video across the screen made it lag, and a video
         // already has its own sideways swipe (scrubbing).
         let onVideoPage = items.indices.contains(page) && (items[page].isVideo || items[page].isAudio)
-        SwipeBackContainer(enabled: page == 0 && !zoomed && !onVideoPage, onBack: { ui.viewer = nil }) {
+        SwipeBackContainer(enabled: page == 0 && !zoomed && !onVideoPage && !locked, onBack: { ui.viewer = nil }) {
             ZStack(alignment: .top) {
                 Color.black.opacity(1 - Double(min(dragY / 500, 0.7))).ignoresSafeArea()
                 if items.isEmpty {
                     Color.clear.onAppear { ui.viewer = nil }
                 } else {
                     Group {
-                        TabView(selection: $page) {
-                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                ViewerPage(item: item, active: index == page, zoomed: $zoomed).tag(index)
+                        if onVideoPage {
+                            // A video page cannot be swiped to another file (a sideways swipe scrubs), so it is shown on
+                            // its own. Inside the swipeable pager, turning the screen could leave it half-way between two
+                            // pages, with two videos sharing one landscape screen.
+                            ViewerPage(item: items[page], active: true, zoomed: $zoomed, locked: $locked)
+                                .ignoresSafeArea()
+                        } else {
+                            TabView(selection: $page) {
+                                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                                    ViewerPage(item: item, active: index == page, zoomed: $zoomed, locked: $locked).tag(index)
+                                }
                             }
+                            .tabViewStyle(.page(indexDisplayMode: .never))
+                            .ignoresSafeArea()
                         }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .ignoresSafeArea()
-                        topBar(items)
+                        if !locked { topBar(items) }
                     }
                     .offset(y: dragY)
                 }
@@ -434,7 +471,7 @@ struct ViewerOverlay: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
-                        guard !zoomed, value.translation.height > 0, abs(value.translation.height) > abs(value.translation.width) else { return }
+                        guard !zoomed, !locked, value.translation.height > 0, abs(value.translation.height) > abs(value.translation.width) else { return }
                         dragY = value.translation.height
                     }
                     .onEnded { value in
@@ -452,6 +489,8 @@ struct ViewerOverlay: View {
                 if count > 0 && page >= count { page = count - 1 }
             }
         }
+        // Closing the viewer puts the screen back to portrait (a video may have turned it to landscape).
+        .onDisappear { ScreenOrientation.lockPortrait() }
     }
 
     private func topBar(_ items: [LibraryItem]) -> some View {
@@ -460,12 +499,23 @@ struct ViewerOverlay: View {
             IconButton(symbol: "chevron.left", color: .white, label: S.actionBack) { ui.viewer = nil }
             Text(current.displayName).textStyle(.titleSmall, color: .white).lineLimit(1)
             Spacer(minLength: 0)
-            IconButton(symbol: "arrow.up.right.square", color: .white, label: S.actionOpen) { ShareSheet.present(current.fileURL) }
-            IconButton(symbol: "trash", color: ActionColors.negative, label: S.actionDelete) {
-                ui.present(ConfirmDialog(
-                    title: S.deleteItemTitle, message: S.deleteItemMessage, confirmLabel: S.actionDelete,
-                ) { store.deleteItems([current.id]) })
+            // Open and Delete share one menu: deleting a file is not a one-tap icon beside a harmless one.
+            Menu {
+                Button { ShareSheet.present(current.fileURL) } label: { Label(S.actionOpenWith, systemImage: "arrow.up.right.square") }
+                Button(role: .destructive) {
+                    ui.present(ConfirmDialog(
+                        title: S.deleteItemTitle, message: S.deleteItemMessage, confirmLabel: S.actionDelete,
+                    ) { store.deleteItems([current.id]) })
+                } label: { Label(S.actionDelete, systemImage: "trash") }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .rotationEffect(.degrees(90))
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(S.actionMore)
         }
         .padding(.horizontal, Spacing.xs)
         .padding(.vertical, Spacing.xs)
@@ -477,6 +527,7 @@ private struct ViewerPage: View {
     let item: LibraryItem
     let active: Bool
     @Binding var zoomed: Bool
+    @Binding var locked: Bool
 
     var body: some View {
         ZStack {
@@ -484,7 +535,7 @@ private struct ViewerPage: View {
             if item.isImage {
                 GalleryImage(item: item, fit: true, showShimmer: false)
             } else if item.isVideo || item.isAudio {
-                VideoViewer(item: item, active: active, zoomed: $zoomed)
+                VideoViewer(item: item, active: active, zoomed: $zoomed, locked: $locked)
             } else {
                 OpenButton(item: item, symbol: "doc.fill")
             }

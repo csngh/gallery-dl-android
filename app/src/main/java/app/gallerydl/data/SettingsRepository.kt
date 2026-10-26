@@ -93,6 +93,11 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setFolderColumns(count: Int) = context.settingsStore.edit { it[FOLDER_COLUMNS] = count.coerceIn(2, 4) }
 
+    /** How many columns the folder list of the library uses: 2 or 3. Two by default. */
+    val libraryColumns: Flow<Int> = context.settingsStore.data.map { (it[LIBRARY_COLUMNS] ?: 2).coerceIn(2, 3) }
+
+    suspend fun setLibraryColumns(count: Int) = context.settingsStore.edit { it[LIBRARY_COLUMNS] = count.coerceIn(2, 3) }
+
     /** Silent looping previews of the videos in the library. On by default. */
     val livePreviews: Flow<Boolean> = context.settingsStore.data.map { it[LIVE_PREVIEWS] ?: true }
 
@@ -200,6 +205,7 @@ class SettingsRepository(private val context: Context) {
         val STARTUP_SOUND = booleanPreferencesKey("startup_sound")
         val LIVE_PREVIEWS = booleanPreferencesKey("live_previews")
         val FOLDER_COLUMNS = intPreferencesKey("folder_columns")
+        val LIBRARY_COLUMNS = intPreferencesKey("library_columns")
         val COOKIES_COUNT = intPreferencesKey("cookies_count")
         const val MAX_COOKIES_BYTES = 5 * 1024 * 1024
     }

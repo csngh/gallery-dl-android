@@ -41,6 +41,7 @@ class AppContainer(context: Context) {
     val destination: StateFlow<DownloadDestination?> = settingsRepository.destination.stateIn(appScope, SharingStarted.Eagerly, null)
     val startupSound: StateFlow<Boolean> = settingsRepository.startupSound.stateIn(appScope, SharingStarted.Eagerly, true)
     val folderColumns: StateFlow<Int> = settingsRepository.folderColumns.stateIn(appScope, SharingStarted.Eagerly, 3)
+    val libraryColumns: StateFlow<Int> = settingsRepository.libraryColumns.stateIn(appScope, SharingStarted.Eagerly, 2)
     val livePreviews: StateFlow<Boolean> = settingsRepository.livePreviews.stateIn(appScope, SharingStarted.Eagerly, true)
     val cookiesCount: StateFlow<Int> = settingsRepository.cookiesCount.stateIn(appScope, SharingStarted.Eagerly, 0)
     val urlValidator = UrlValidator(pythonBridge)

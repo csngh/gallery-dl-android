@@ -56,7 +56,16 @@
     <string name="search_label">Search</string>
     <string name="action_back">Back</string>
     <string name="action_open">Open</string>
+    <string name="action_open_with">Open in another app</string>
     <string name="action_play">Play</string>
+    <string name="action_loop_on">Loop this video</string>
+    <string name="action_loop_off">Stop looping</string>
+    <string name="action_lock">Lock touch</string>
+    <string name="action_unlock">Unlock touch</string>
+    <string name="action_skip_back">Back 10 seconds</string>
+    <string name="action_skip_forward">Forward 10 seconds</string>
+    <string name="action_landscape">Landscape</string>
+    <string name="action_exit_landscape">Portrait</string>
     <string name="action_pause">Pause</string>
     <string name="action_delete">Delete</string>
     <plurals name="folder_items">

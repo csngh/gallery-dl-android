@@ -33,8 +33,14 @@ class LibraryViewModel(
     val previewStrips: app.gallerydl.data.PreviewStripCache,
     /** How many columns the files of an open folder use: 2 to 4. */
     val folderColumns: StateFlow<Int>,
+    /** How many columns the folder list uses: 2 or 3. */
+    val libraryColumns: StateFlow<Int>,
     private val settings: app.gallerydl.data.SettingsRepository,
 ) : ViewModel() {
+
+    fun setLibraryColumns(count: Int) {
+        viewModelScope.launch { settings.setLibraryColumns(count) }
+    }
 
     fun setFolderColumns(count: Int) {
         viewModelScope.launch { settings.setFolderColumns(count) }

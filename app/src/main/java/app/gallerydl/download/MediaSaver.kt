@@ -93,9 +93,13 @@ fun linkDisplayName(url: String?, fallback: String): String {
     return withoutExtension.replace('_', ' ').trim().ifEmpty { fallback }
 }
 
-/** The name a folder shows, followed by " / tag" when the user gave it a tag. */
+/** The title a folder shows: its tag when the user gave it one (the name moves to the line below), its name otherwise. */
 fun folderTitle(displayName: String, tag: String?): String =
-    if (tag.isNullOrBlank()) displayName else "$displayName / ${tag.trim()}"
+    if (tag.isNullOrBlank()) displayName else tag.trim()
+
+/** The folder's own name, shown beside the item count while its tag is the title; null when the name is the title. */
+fun folderSubtitle(displayName: String, tag: String?): String? =
+    if (tag.isNullOrBlank()) null else displayName
 
 /** Folder name for one link: host plus the last two path segments, e.g. "imgur.com_a_AbC123". */
 fun linkFolderName(url: String): String {

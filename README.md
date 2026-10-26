@@ -62,7 +62,7 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 ### Library
 
 - **One folder per link**, with search of file names (currently hidden), multi-select delete, and **folder tags**
-  (long-press a folder, or use the tag button inside it): the folder then reads "name / tag".
+  (long-press a folder, or use the tag button inside it): the tag becomes the folder's title and its own name moves to the line below it.
 - **Live previews.** Every video plays a silent, looping preview, and folder covers cycle through clips from random
   videos in their folder. A preview is a random 3 second window of the video, saved once at the video's own frame rate
   (up to 30 fps) as a short strip of small JPEG frames, so playing it needs no video decoder and about 1-2 MB of
@@ -73,7 +73,7 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 - **Columns.** 2, 3 or 4 columns inside a folder.
 - **Built-in video player.** Videos and audio play inside the app (Media3 ExoPlayer): swipe sideways to scrub with a
   live picture and a "+0:12" pill, a seek bar that previews as you drag, playback speed 0.5x to 2x (remembered), pinch or
-  double-tap to zoom and drag to pan, tap to hide the controls. Formats the phone cannot play fall back to opening
+  double-tap to zoom and drag to pan, tap to hide the controls, a loop button (repeat the video), a lock button (ignores every touch until you unlock it), back and forward 10 seconds, and a rotate-to-landscape button on phones. Formats the phone cannot play fall back to opening
   another app.
 - **Entries disappear** when their files are deleted outside the app.
 

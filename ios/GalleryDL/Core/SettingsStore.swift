@@ -7,6 +7,8 @@ final class SettingsStore: ObservableObject {
     @Published var startupSound: Bool { didSet { defaults.set(startupSound, forKey: Keys.sound) } }
     /// How many columns the files of a library folder are shown in: 2 to 4. Three by default.
     @Published var folderColumns: Int { didSet { defaults.set(folderColumns, forKey: Keys.columns) } }
+    /// How many columns the folder list of the library uses: 2 or 3. Two by default.
+    @Published var libraryColumns: Int { didSet { defaults.set(libraryColumns, forKey: Keys.libraryColumns) } }
     /// Silent looping previews of the videos in the library. On by default.
     @Published var livePreviews: Bool { didSet { defaults.set(livePreviews, forKey: Keys.previews) } }
     /// How many cookies the imported cookies.txt holds; 0 when none is imported.
@@ -15,7 +17,7 @@ final class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private enum Keys {
-        static let options = "gdl.options", sound = "startupSound", previews = "livePreviews", columns = "folderColumns", cookies = "gdl.cookiesCount"
+        static let options = "gdl.options", sound = "startupSound", previews = "livePreviews", columns = "folderColumns", libraryColumns = "libraryColumns", cookies = "gdl.cookiesCount"
     }
 
     init() {
@@ -28,6 +30,7 @@ final class SettingsStore: ObservableObject {
         // `bool(forKey:)` and `integer(forKey:)` also read values given as launch arguments, which arrive as text.
         startupSound = defaults.object(forKey: Keys.sound) == nil ? true : defaults.bool(forKey: Keys.sound)
         livePreviews = defaults.object(forKey: Keys.previews) == nil ? true : defaults.bool(forKey: Keys.previews)
+        libraryColumns = defaults.object(forKey: Keys.libraryColumns) == nil ? 2 : min(max(defaults.integer(forKey: Keys.libraryColumns), 2), 3)
         folderColumns = defaults.object(forKey: Keys.columns) == nil ? 3 : min(max(defaults.integer(forKey: Keys.columns), 2), 4)
         cookiesCount = defaults.integer(forKey: Keys.cookies)
     }

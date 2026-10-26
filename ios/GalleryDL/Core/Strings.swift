@@ -9,6 +9,11 @@ enum S {
     static let notifStorageTitle = "Downloads paused: storage almost full"
     static func notifStorageBody(_ percent: Int) -> String { "The storage is \(percent)% full. Free some space and downloads carry on by themselves." }
     static func storageWarning(_ percent: Int) -> String { "Storage is almost full (\(percent)%). Downloads are paused until some space is freed." }
+    static let actionSkipBack = "Back 10 seconds", actionSkipForward = "Forward 10 seconds"
+    static let actionLandscape = "Landscape", actionExitLandscape = "Portrait"
+    static let actionOpenWith = "Open in another app"
+    static let actionLoopOn = "Loop this video", actionLoopOff = "Stop looping"
+    static let actionLock = "Lock touch", actionUnlock = "Unlock touch"
     static let actionRenew = "Renew all links"
     static let actionLinksMenu = "Export or import links", actionExportLinks = "Export links", actionImportLinks = "Import links"
     static let exportEmpty = "There are no links to export yet."
