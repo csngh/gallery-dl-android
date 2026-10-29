@@ -37,6 +37,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Star
+import app.gallerydl.download.isFavoritesFolder
+import app.gallerydl.download.originalSource
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.AlertDialog
@@ -116,6 +122,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.unit.Dp
 import app.gallerydl.ui.components.TwoPaneMinWidth
@@ -148,6 +155,9 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
     BackHandler(enabled = openFolder != null, onBack = viewModel::back)
 
     val folder = openFolder
+    // The folder list's scroll position lives here, above the choice between the list and an open folder, so coming back
+    // from a folder lands where you left off instead of at the top.
+    val foldersGridState = rememberLazyGridState()
     // The full-screen viewer lives here, above the choice between the one-pane and two-pane layout. Turning a phone to
     // landscape switches that layout and rebuilds the folder screen; the viewer, and the video playing in it, must not.
     val viewerItems by viewModel.items.collectAsStateWithLifecycle()
@@ -166,6 +176,7 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
             Row(Modifier.fillMaxSize()) {
                 FoldersContent(
                     viewModel = viewModel,
+                    gridState = foldersGridState,
                     modifier = Modifier.weight(0.2f).fillMaxHeight(),
                     folderMinSize = 140.dp,
                     selectedFolderId = folder?.id,
@@ -186,7 +197,7 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
                 }
             }
         } else if (folder == null) {
-            FoldersContent(viewModel, Modifier.readableWidth())
+            FoldersContent(viewModel, Modifier.readableWidth(), gridState = foldersGridState)
         } else {
             FolderContent(viewModel, folder, Modifier.readableWidth(), showBack = true, onOpenViewer = { viewerIndex = it })
         }
@@ -212,6 +223,7 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
 private fun FoldersContent(
     viewModel: LibraryViewModel,
     modifier: Modifier,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     folderMinSize: Dp = 150.dp,
     selectedFolderId: Long? = null,
     /** The side list of the wide layout shows one folder per row. */
@@ -224,13 +236,22 @@ private fun FoldersContent(
     var folderToDelete by remember { mutableStateOf<FolderSummary?>(null) }
     var folderActions by remember { mutableStateOf<FolderSummary?>(null) }
     var folderToTag by remember { mutableStateOf<FolderSummary?>(null) }
-    val foldersGridState = rememberLazyGridState()
+    val foldersGridState = gridState
 
     Column(modifier) {
         TopAppBar(
             title = { ScreenTitle(stringResource(R.string.nav_library)) },
-            // The side list of the wide layout is always one column, so it has nothing to choose.
-            actions = { if (!singleColumn) ColumnsMenu(columns = listColumns, onSelect = viewModel::setLibraryColumns, options = 2..3) },
+            actions = {
+                val newestFirst by viewModel.libraryNewestFirst.collectAsStateWithLifecycle()
+                // The side list of the wide layout is always one column, but it can still be sorted.
+                ColumnsMenu(
+                    columns = listColumns,
+                    onSelect = viewModel::setLibraryColumns,
+                    options = if (singleColumn) IntRange.EMPTY else 2..3,
+                    newestFirst = newestFirst,
+                    onSortChange = viewModel::setLibraryNewestFirst,
+                )
+            },
         )
         PreviewProgressBanner(viewModel.previewStrips)
         // The search box is hidden for now; SearchField and the view-model search stay for when it comes back.
@@ -377,6 +398,7 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
     val query by viewModel.itemQuery.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
+    var detailsOf by remember { mutableStateOf<LibraryItem?>(null) }
     val itemsGridState = rememberLazyGridState()
     val selecting = selection.isNotEmpty()
     val columns by viewModel.folderColumns.collectAsStateWithLifecycle()
@@ -389,7 +411,9 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
                 Column {
                     Text(
                         if (selecting) stringResource(R.string.selected_count, selection.size) else folderTitle(folder.name, tag),
-                        maxLines = 2,
+                        // One line, whatever buttons sit beside it: "3 selected" is set a little smaller, a long folder name is cut.
+                        style = if (selecting) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     // The folder's own name sits under its tag.
@@ -418,6 +442,24 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
             },
             actions = {
                 if (selecting) {
+                    // Details is about one file, so the i appears only while exactly one is selected.
+                    if (selection.size == 1) {
+                        IconButton(onClick = { detailsOf = items?.firstOrNull { it.id in selection } }) {
+                            Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.action_details))
+                        }
+                    }
+                    // The files in Favorites are already copies kept in the app, so there is nothing to add them to.
+                    if (!isFavoritesFolder(folder.name)) {
+                        val context = LocalContext.current
+                        IconButton(onClick = {
+                            viewModel.addSelectedToFavorites { added ->
+                                val text = if (added > 0) context.resources.getQuantityString(R.plurals.favorites_added, added, added) else context.getString(R.string.favorites_none_added)
+                                Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Icon(Icons.Filled.Star, contentDescription = stringResource(R.string.action_favorite))
+                        }
+                    }
                     IconButton(onClick = { confirmDelete = true }, colors = ActionColors.negativeIcon()) {
                         Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.action_delete))
                     }
@@ -425,7 +467,13 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
                     IconButton(onClick = { tagging = true }) {
                         Icon(Icons.AutoMirrored.Filled.Label, contentDescription = stringResource(R.string.action_tag_folder))
                     }
-                    ColumnsMenu(columns = columns, onSelect = viewModel::setFolderColumns)
+                    val newestFirst by viewModel.folderNewestFirst.collectAsStateWithLifecycle()
+                    ColumnsMenu(
+                        columns = columns,
+                        onSelect = viewModel::setFolderColumns,
+                        newestFirst = newestFirst,
+                        onSortChange = viewModel::setFolderNewestFirst,
+                    )
                 }
             },
         )
@@ -469,6 +517,8 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
         )
     }
 
+    detailsOf?.let { item -> ItemDetailsDialog(item, onDismiss = { detailsOf = null }) }
+
     if (confirmDelete) {
         ConfirmDialog(
             title = stringResource(R.string.delete_selected_title),
@@ -480,6 +530,52 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
             },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/** Where a file came from: the link the user added, and the file's own direct address, each with a Copy button. */
+@Composable
+private fun ItemDetailsDialog(item: LibraryItem, onDismiss: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val context = LocalContext.current
+    fun copy(text: String) {
+        clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+        // Android 13 and later confirms a copy by itself.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(item.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.Md)) {
+                // A favourite keeps the link it was copied from, so it can still be traced after that link is gone.
+                val link = originalSource(item.sourceUrl)
+                DetailsLink(stringResource(R.string.details_source_link), link, onCopy = { copy(link) })
+                DetailsLink(
+                    stringResource(R.string.details_file_address),
+                    item.fileUrl,
+                    onCopy = { item.fileUrl?.let(::copy) },
+                    note = stringResource(if (item.fileUrl == null) R.string.details_file_address_missing else R.string.details_file_address_note),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+    )
+}
+
+@Composable
+private fun DetailsLink(label: String, url: String?, onCopy: () -> Unit, note: String? = null) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.Xs)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (url != null) {
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                Text(url, style = MaterialTheme.typography.bodyMedium)
+            }
+            TextButton(onClick = onCopy) { Text(stringResource(R.string.action_copy)) }
+        }
+        if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -539,11 +635,11 @@ private fun TagDialog(initial: String?, onSave: (String) -> Unit, onDismiss: () 
 
 /** The grid button in a folder's top bar: choose how many columns the files are shown in (2 to 4). */
 @Composable
-private fun ColumnsMenu(columns: Int, onSelect: (Int) -> Unit, options: IntRange = 2..4) {
+private fun ColumnsMenu(columns: Int, onSelect: (Int) -> Unit, options: IntRange = 2..4, newestFirst: Boolean? = null, onSortChange: (Boolean) -> Unit = {}) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Filled.GridView, contentDescription = stringResource(R.string.action_columns))
+            Icon(Icons.Filled.GridView, contentDescription = stringResource(if (newestFirst != null) R.string.action_view_options else R.string.action_columns))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { count ->
@@ -557,6 +653,22 @@ private fun ColumnsMenu(columns: Int, onSelect: (Int) -> Unit, options: IntRange
                         onSelect(count)
                     },
                 )
+            }
+            // The folder list can also be put in date order.
+            if (newestFirst != null) {
+                if (!options.isEmpty()) HorizontalDivider()
+                listOf(true to R.string.sort_newest, false to R.string.sort_oldest).forEach { (value, label) ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(label)) },
+                        trailingIcon = {
+                            if (value == newestFirst) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        onClick = {
+                            expanded = false
+                            onSortChange(value)
+                        },
+                    )
+                }
             }
         }
     }
@@ -619,6 +731,7 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, items.lastIndex)) { items.size }
     val current = items.getOrNull(pagerState.currentPage)
     var itemToDelete by remember { mutableStateOf<LibraryItem?>(null) }
+    var itemDetails by remember { mutableStateOf<LibraryItem?>(null) }
     // A zoomed-in video is dragged around, and a video is scrubbed by swiping, so the pager stays put on those pages.
     var zoomed by remember { mutableStateOf(false) }
     // The touch lock of the video player: while on, the back button and the top bar are off as well.
@@ -663,6 +776,7 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
                     onLockedChange = { locked = it },
                 )
             }
+            itemDetails?.let { item -> ItemDetailsDialog(item, onDismiss = { itemDetails = null }) }
             itemToDelete?.let { item ->
                 ConfirmDialog(
                     title = stringResource(R.string.delete_item_title),
@@ -704,6 +818,14 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
                                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more))
                             }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_details)) },
+                                    leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        itemDetails = current
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.action_open_with)) },
                                     leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
@@ -778,8 +900,11 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
 private fun String?.isVisualMime() = this != null && (startsWith("image/") || startsWith("video/"))
 
 private fun openExternally(context: Context, item: LibraryItem) {
+    var uri = Uri.parse(item.contentUri)
+    // A favourite is a file inside the app, which other apps can only be given through the file provider.
+    if (uri.scheme == "file") uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", java.io.File(requireNotNull(uri.path)))
     val intent = Intent(Intent.ACTION_VIEW)
-        .setDataAndType(Uri.parse(item.contentUri), item.mimeType)
+        .setDataAndType(uri, item.mimeType)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     try {
         context.startActivity(intent)

@@ -80,7 +80,7 @@ chaquopy {
     defaultConfig {
         version = "3.12"
         pip {
-            install("gallery-dl==1.28.5")
+            install("gallery-dl==1.32.18")
         }
     }
     productFlavors {

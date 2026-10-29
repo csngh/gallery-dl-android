@@ -49,6 +49,9 @@ targets:
       - framework: Python.xcframework
         embed: true
         codeSign: true
+      # Built by scripts/build_webm.sh: the VP8/VP9 decoder the app uses for .webm files.
+      - framework: Vendor/Vpx.xcframework
+        embed: false
       - sdk: libz.tbd
       - sdk: libsqlite3.tbd
     postBuildScripts:

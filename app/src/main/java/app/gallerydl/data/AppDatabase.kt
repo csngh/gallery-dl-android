@@ -10,7 +10,7 @@ import app.gallerydl.download.linkFolderName
 
 @Database(
     entities = [DownloadTask::class, Folder::class, LibraryItem::class],
-    version = 6,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,7 +20,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "gallerydl.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
     }
 }
@@ -75,5 +75,26 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
 private val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE folders ADD COLUMN tag TEXT")
+    }
+}
+
+/** "Clear finished" on the Queue hides links there instead of deleting them. */
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE download_tasks ADD COLUMN hiddenFromQueue INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** Each file keeps the direct address it was downloaded from. */
+private val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE library_items ADD COLUMN fileUrl TEXT")
+    }
+}
+
+/** A link can carry the folder name the user chose for it. */
+private val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE download_tasks ADD COLUMN folderName TEXT")
     }
 }

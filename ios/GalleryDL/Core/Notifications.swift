@@ -4,6 +4,8 @@ import UserNotifications
 /// the background, so only the result of each link is announced.
 enum Notifications {
     static func requestPermission() {
+        // `-testNoNotifications 1` skips the system question, which would cover the screen when checking in the simulator.
+        if UserDefaults.standard.bool(forKey: "testNoNotifications") { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 

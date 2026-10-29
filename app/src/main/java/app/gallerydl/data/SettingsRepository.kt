@@ -98,6 +98,16 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLibraryColumns(count: Int) = context.settingsStore.edit { it[LIBRARY_COLUMNS] = count.coerceIn(2, 3) }
 
+    /** The folder list of the library by date: newest first (the default) or oldest first. */
+    val libraryNewestFirst: Flow<Boolean> = context.settingsStore.data.map { it[LIBRARY_NEWEST_FIRST] ?: true }
+
+    /** The files inside a library folder by date: newest first (the default) or oldest first. */
+    val folderNewestFirst: Flow<Boolean> = context.settingsStore.data.map { it[FOLDER_NEWEST_FIRST] ?: true }
+
+    suspend fun setFolderNewestFirst(newestFirst: Boolean) = context.settingsStore.edit { it[FOLDER_NEWEST_FIRST] = newestFirst }
+
+    suspend fun setLibraryNewestFirst(newestFirst: Boolean) = context.settingsStore.edit { it[LIBRARY_NEWEST_FIRST] = newestFirst }
+
     /** Silent looping previews of the videos in the library. On by default. */
     val livePreviews: Flow<Boolean> = context.settingsStore.data.map { it[LIVE_PREVIEWS] ?: true }
 
@@ -206,6 +216,8 @@ class SettingsRepository(private val context: Context) {
         val LIVE_PREVIEWS = booleanPreferencesKey("live_previews")
         val FOLDER_COLUMNS = intPreferencesKey("folder_columns")
         val LIBRARY_COLUMNS = intPreferencesKey("library_columns")
+        val FOLDER_NEWEST_FIRST = booleanPreferencesKey("folder_newest_first")
+        val LIBRARY_NEWEST_FIRST = booleanPreferencesKey("library_newest_first")
         val COOKIES_COUNT = intPreferencesKey("cookies_count")
         const val MAX_COOKIES_BYTES = 5 * 1024 * 1024
     }

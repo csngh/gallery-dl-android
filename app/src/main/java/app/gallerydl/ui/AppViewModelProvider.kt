@@ -16,15 +16,15 @@ object AppViewModelProvider {
     val Factory = viewModelFactory {
         initializer {
             val c = app().container
-            QueueViewModel(c.downloadRepository, c.urlValidator)
+            QueueViewModel(c.downloadRepository, c.urlValidator, c.folderChoice)
         }
         initializer {
             val c = app().container
-            HomeViewModel(c.downloadRepository, c.urlValidator)
+            HomeViewModel(c.downloadRepository, c.urlValidator, c.folderChoice)
         }
         initializer {
             val c = app().container
-            LibraryViewModel(c.libraryRepository, c.livePreviews, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.libraryColumns, c.settingsRepository)
+            LibraryViewModel(c.libraryRepository, c.livePreviews, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.libraryColumns, c.libraryNewestFirst, c.folderNewestFirst, c.settingsRepository)
         }
         initializer { ActivityViewModel(app().container.downloadRepository) }
         initializer {

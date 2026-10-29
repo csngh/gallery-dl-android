@@ -28,6 +28,12 @@ struct DownloadTask: Identifiable, Codable, Equatable {
     var site: String?
     var createdAt: Date
     var finishedAt: Date?
+    /// Set by "Clear finished" on the Queue: the link no longer shows there, but stays on Home and in Activity.
+    /// Optional so data saved before this existed still loads; nil means shown.
+    var hiddenFromQueue: Bool?
+    /// The library folder the user chose for this link before it started; nil means the folder gallery-dl names.
+    /// Optional so data saved before this existed still loads.
+    var folderName: String?
 
     var result: TaskResult {
         switch status {
@@ -74,11 +80,15 @@ struct LibraryItem: Identifiable, Codable, Equatable {
     var taskId: Int64?
     var folderId: Int64?
     var addedAt: Date
+    /// The direct address this file was downloaded from; nil for files saved before it was kept.
+    var fileUrl: String?
 
     var fileURL: URL { MediaFiles.root.appendingPathComponent(relativePath) }
     var isImage: Bool { mimeType.hasPrefix("image/") }
     var isVideo: Bool { mimeType.hasPrefix("video/") }
     var isAudio: Bool { mimeType.hasPrefix("audio/") }
+    /// WebM is not something the system player can open, so the app decodes it itself (see Core/WebM).
+    var isWebM: Bool { mimeType == "video/webm" || fileURL.pathExtension.lowercased() == "webm" }
     var isVisual: Bool { isImage || isVideo }
 }
 
@@ -91,8 +101,8 @@ struct FolderSummary: Identifiable, Equatable {
     let sourceUrl: String?
     let tag: String?
 
-    /// What the library shows: the last part of the link rather than the full folder name.
-    var displayName: String { linkDisplayName(sourceUrl, fallback: name) }
+    /// What the library shows: the folder's own name, exactly as gallery-dl made it.
+    var displayName: String { name }
 
     /** What the library shows: the name, then " / tag" when the folder has a tag. */
     var title: String { folderTitle(displayName, tag) }

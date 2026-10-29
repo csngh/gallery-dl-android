@@ -6,25 +6,29 @@ struct QueueScreen: View {
     @EnvironmentObject private var ui: UIState
     @ObservedObject var input: LinkInputModel
 
+    /// Links cleared from the Queue stay on Home and in Activity.
+    private var tasks: [DownloadTask] { store.tasks.filter { $0.hiddenFromQueue != true } }
+
     var body: some View {
         VStack(spacing: 0) {
             TopBar(title: S.navQueue) {
-                if store.tasks.contains(where: \.isFinished) {
+                if tasks.contains(where: \.isFinished) {
                     TextPill(title: S.actionClearFinished, color: ActionColors.negative) { ui.confirmClearFinished(store: store) }
                 }
             }
             StorageBanner(storage: app.storage)
             LinkField(input: input)
-            StartAllButton(count: store.tasks.filter { $0.status == .pending }.count) { app.engine.startAll() }
+            StopAllButton(count: tasks.filter { $0.status == .queued || $0.status == .downloading }.count) { app.engine.cancelAll() }
+            StartAllButton(count: tasks.filter { $0.status == .pending }.count) { app.engine.startAll() }
 
             if !store.loaded {
                 ShimmerCardList()
-            } else if store.tasks.isEmpty {
+            } else if tasks.isEmpty {
                 EmptyState(title: S.queueEmptyTitle, message: S.queueEmptyBody, symbol: "arrow.down.to.line", tone: .blue)
             } else {
                 SoftScrollView {
                     LazyVStack(spacing: Spacing.md) {
-                        ForEach(store.tasks) { task in TaskCard(task: task) }
+                        ForEach(tasks) { task in TaskCard(task: task) }
                     }
                     .padding(Spacing.md)
                 }
@@ -48,7 +52,7 @@ private struct TaskCard: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(task.url).textStyle(.bodyLarge).lineLimit(2).onTapGesture { ui.showFullLink(task.url) }
                         Text(task.statusLabel).textStyle(.labelLarge, color: task.result.color)
-                        if task.status == .pending { StartButton { app.engine.start(task.id) }.padding(.top, Spacing.sm) }
+                        if task.status == .pending { StartButton { ui.present(StartFolderDialog(task: task)) }.padding(.top, Spacing.sm) }
                     }
                     Spacer(minLength: 0)
                     trailing

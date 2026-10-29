@@ -50,6 +50,7 @@ struct HomeScreen: View {
             }
             StorageBanner(storage: app.storage)
             LinkField(input: input)
+            StopAllButton(count: store.tasks.filter { $0.status == .queued || $0.status == .downloading }.count) { app.engine.cancelAll() }
             StartAllButton(count: store.tasks.filter { $0.status == .pending }.count) { app.engine.startAll() }
 
             if !store.loaded {
@@ -130,7 +131,8 @@ private struct SiteGroupCard: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var ui: UIState
     let group: SiteGroup
-    @State private var expanded = false
+    // `-testExpandHome 1` opens every site group, to check the link rows in the simulator.
+    @State private var expanded = UserDefaults.standard.bool(forKey: "testExpandHome")
 
     var body: some View {
         Card {
@@ -194,11 +196,19 @@ private struct SiteLinkRow: View {
         HStack(spacing: Spacing.md) {
             IconTile(symbol: symbol, tone: tone, size: TileSize.small)
             VStack(alignment: .leading, spacing: 0) {
-                Text(task.url.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""))
+                let link = task.url.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
+                // The folder's name tells which folder the menu on this row acts on; the link sits below it. Until a link
+                // has a folder, the link is the main text.
+                let folder = task.folderName ?? store.folderName(forLink: task.url)
+                Text(folder ?? link)
                     .textStyle(.bodyMedium).lineLimit(1)
                     .onTapGesture { ui.showFullLink(task.url) }
+                if folder != nil {
+                    Text(link).textStyle(.bodySmall, color: Brand.onSurfaceVariant).lineLimit(1)
+                        .onTapGesture { ui.showFullLink(task.url) }
+                }
                 Text(status).textStyle(.labelMedium, color: tone.icon)
-                if task.status == .pending { StartButton { app.engine.start(task.id) }.padding(.top, Spacing.xs) }
+                if task.status == .pending { StartButton { ui.present(StartFolderDialog(task: task)) }.padding(.top, Spacing.xs) }
             }
             Spacer(minLength: 0)
             trailing

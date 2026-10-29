@@ -11,9 +11,16 @@ enum S {
     static func storageWarning(_ percent: Int) -> String { "Storage is almost full (\(percent)%). Downloads are paused until some space is freed." }
     static let actionSkipBack = "Back 10 seconds", actionSkipForward = "Forward 10 seconds"
     static let actionLandscape = "Landscape", actionExitLandscape = "Portrait"
+    static let actionDetails = "Details"
+    static let detailsSourceLink = "Link you added", detailsFileAddress = "This file's own address"
+    static let detailsFileAddressMissing = "Not saved: this file was downloaded before addresses were kept."
+    static let detailsFileAddressNote = "Some sites give an address that stops working after a while."
     static let actionOpenWith = "Open in another app"
     static let actionLoopOn = "Loop this video", actionLoopOff = "Stop looping"
     static let actionLock = "Lock touch", actionUnlock = "Unlock touch"
+    /// Shown over a WebM video whose sound cannot be played. `format` is the file's own name for the sound format.
+    static func soundUnsupported(_ format: String) -> String { "No sound: \(format) is not supported" }
+    static let soundFailed = "No sound: the audio output failed"
     static let actionRenew = "Renew all links"
     static let actionLinksMenu = "Export or import links", actionExportLinks = "Export links", actionImportLinks = "Import links"
     static let exportEmpty = "There are no links to export yet."
@@ -63,7 +70,20 @@ enum S {
     static func selectedCount(_ n: Int) -> String { "\(n) selected" }
     static let actionTagFolder = "Tag folder", actionDeleteFolder = "Delete folder", actionRemoveTag = "Remove tag"
     static let tagFolderTitle = "Tag this folder", tagLabel = "Tag"
+    static let startFolderTitle = "Folder for this link"
+    static let startFolderMessage = "The files are saved in this folder. Keep the name or type another one; the link then always saves there, also when you refresh it."
+    static let startFolderLabel = "Folder name"
+    static let startFolderLooking = "Looking up the folder name\u{2026}"
+    static let startFolderUnknown = "The name could not be found in advance. Leave this empty to use the one gallery-dl gives, or type your own."
+    static let startFolderExists = "A folder with this name already exists. It belongs to:"
+    static func startFolderMore(_ n: Int) -> String { "and \(n) more" }
+    static let actionFavorite = "Add to Favorites"
+    static func favoritesAdded(_ n: Int) -> String { n == 1 ? "1 file added to Favorites" : "\(n) files added to Favorites" }
+    static let favoritesNoneAdded = "Already in Favorites"
     static let actionColumns = "Columns"
+    static let actionViewOptions = "Columns and order"
+    static let sortNewest = "Newest first"
+    static let sortOldest = "Oldest first"
     static func columnsOption(_ n: Int) -> String { "\(n) columns" }
     static let deleteFolderTitle = "Delete this folder?"
     static func deleteFolderMessage(_ n: Int) -> String {
@@ -92,6 +112,8 @@ enum S {
     static let confirmQuestion = "Do you want to continue?"
     static let deleteItemTitle = "Delete this file?"
     static let deleteItemMessage = "This will permanently delete this file from your phone."
+    static let clearQueueTitle = "Clear the finished links from the Queue?"
+    static let clearQueueMessage = "This only tidies the Queue. The links stay on Home, so you can refresh them again, and the downloaded files stay in your library."
     static let clearFinishedTitle = "Clear the finished links?"
     static let clearFinishedMessage = "This will remove all finished links from the queue and from the activity history. The downloaded files will remain in your library."
     static let actionClear = "Clear"
@@ -119,6 +141,7 @@ enum S {
 
     static let actionStart = "Start"
     static func actionStartAll(_ n: Int) -> String { "Start all (\(n))" }
+    static func actionStopAll(_ n: Int) -> String { "Stop all (\(n))" }
 
     static let settingsTitle = "Settings"
     static let settingsPacingTitle = "Pacing"

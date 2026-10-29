@@ -31,6 +31,10 @@ data class DownloadTask(
     val site: String? = null,
     val createdAt: Long,
     val finishedAt: Long? = null,
+    /** Set by "Clear finished" on the Queue: the link no longer shows there, but stays on Home and in Activity. */
+    @ColumnInfo(defaultValue = "0") val hiddenFromQueue: Boolean = false,
+    /** The library folder the user chose for this link before it started; null means the folder gallery-dl names. */
+    val folderName: String? = null,
 )
 
 @Entity(tableName = "folders", indices = [Index("name", unique = true)])
@@ -58,6 +62,8 @@ data class LibraryItem(
     val taskId: Long?,
     val folderId: Long? = null,
     val addedAt: Long,
+    /** The direct address this file was downloaded from; null for files saved before it was kept. */
+    val fileUrl: String? = null,
 )
 
 val DownloadTask.result: TaskResult

@@ -56,7 +56,12 @@ data class EditLinkState(
 class HomeViewModel(
     private val downloads: DownloadRepository,
     private val validator: UrlValidator,
+    val folderChoice: app.gallerydl.download.FolderChoice,
 ) : ViewModel() {
+
+    /** Link -> the library folder its files are in, so a link can be shown by its folder's name. */
+    val folderNames: StateFlow<Map<String, String>> = folderChoice.observeFolderNames()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     private val linkInput = LinkInput(downloads, validator)
     val input: StateFlow<UrlInputState> = linkInput.state
@@ -188,8 +193,10 @@ class HomeViewModel(
 
     // endregion
 
-    fun start(id: Long) = viewModelScope.launch { downloads.start(id) }
+    fun start(id: Long, folderName: String? = null) = viewModelScope.launch { downloads.start(id, folderName) }
     fun startAll() = viewModelScope.launch { downloads.startAll() }
+
+    fun stopAll() = viewModelScope.launch { downloads.cancelAll() }
 
     fun renewAll() = viewModelScope.launch { downloads.renewAll() }
     fun cancel(id: Long) = viewModelScope.launch { downloads.cancel(id) }

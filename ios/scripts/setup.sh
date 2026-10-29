@@ -25,6 +25,11 @@ if find app_packages -name '*.so' | grep -q .; then
     exit 1
 fi
 
+if [ ! -d Vendor/Vpx.xcframework ]; then
+    echo "Building the WebM video decoder (libvpx)..."
+    bash scripts/build_webm.sh
+fi
+
 command -v xcodegen >/dev/null || { echo "Install XcodeGen first: brew install xcodegen" >&2; exit 1; }
 xcodegen generate
 echo "Done. Open GalleryDL.xcodeproj."

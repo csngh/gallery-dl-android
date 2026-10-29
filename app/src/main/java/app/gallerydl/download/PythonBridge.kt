@@ -10,6 +10,9 @@ interface DownloadListener {
     fun isCancelled(): Boolean
     fun onFile(path: String, sourceUrl: String)
 
+    /** A file gallery-dl already had (so nothing was saved): its [name] and the address it has now. */
+    fun onSkipped(name: String, fileUrl: String, folder: String)
+
     /** [count] is 0 when the number of files is unknown; [percent] is -1 when the file size is unknown. */
     fun onProgress(index: Int, count: Int, percent: Int, fileName: String)
 }
@@ -30,14 +33,20 @@ class PythonBridge(private val context: Context) {
 
     fun siteOf(url: String): String = module.callAttr("site_of", url).toString()
 
+    /** The folder gallery-dl would save the first file of a link in; "" when it cannot tell. May take a few seconds. */
+    fun previewFolder(url: String, optionsJson: String): String = module.callAttr("preview_folder", url, optionsJson).toString()
+
     fun download(
         url: String,
         baseDir: String,
         archivePath: String,
         optionsJson: String,
         listener: DownloadListener,
+        knownFiles: List<String> = emptyList(),
+        knownUrls: List<String> = emptyList(),
     ): DownloadOutcome {
-        val json = JSONObject(module.callAttr("download", url, baseDir, archivePath, optionsJson, listener).toString())
+        val known = JSONObject().put("names", org.json.JSONArray(knownFiles)).put("urls", org.json.JSONArray(knownUrls)).toString()
+        val json = JSONObject(module.callAttr("download", url, baseDir, archivePath, optionsJson, listener, known).toString())
         val errors = json.getJSONArray("errors")
         return DownloadOutcome(
             status = json.getInt("status"),

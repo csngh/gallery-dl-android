@@ -24,6 +24,10 @@ class _Listener:
         with _lock:
             _files.append({"path": path, "url": url})
 
+    def onSkipped(self, name, url, folder):
+        with _lock:
+            _files.append({"skipped": name, "url": url, "folder": folder})
+
     def isCancelled(self):
         return _cancel.is_set()
 
@@ -37,6 +41,15 @@ def check(arg):
     return json.dumps({"supported": gdl_bridge.is_supported(url), "site": gdl_bridge.site_of(url)})
 
 
+def preview(arg):
+    """The folder gallery-dl would save the first file of a link in, found without downloading anything."""
+    args = json.loads(arg)
+    try:
+        return json.dumps({"folder": gdl_bridge.preview_folder(args["url"], json.dumps(args.get("options", {})))})
+    except Exception:
+        return json.dumps({"folder": ""})
+
+
 def download(arg):
     args = json.loads(arg)
     _cancel.clear()
@@ -45,7 +58,8 @@ def download(arg):
         _files.clear()
     try:
         return gdl_bridge.download(
-            args["url"], args["base_dir"], args["archive_path"], json.dumps(args.get("options", {})), _Listener()
+            args["url"], args["base_dir"], args["archive_path"], json.dumps(args.get("options", {})), _Listener(),
+            json.dumps(args.get("known", [])),
         )
     except Exception:
         return json.dumps({"status": -1, "failed": 0, "errors": [traceback.format_exc()]})

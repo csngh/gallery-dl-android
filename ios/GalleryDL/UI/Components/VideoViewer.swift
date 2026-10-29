@@ -1,6 +1,31 @@
 import AVFoundation
 import SwiftUI
 
+/// Every change of the audio session goes through one queue, in order. Switching can take seconds while the sound route
+/// changes, so it never happens on the main thread, and a late "back to quiet" can never land after the next video's
+/// "playback".
+private enum AudioSessionQueue {
+    private static let queue = DispatchQueue(label: "app.gallerydl.audio-session", qos: .userInitiated)
+
+    /// Sound on, mixing off: this is the one place the app plays audio on purpose.
+    static func playback() async {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let session = AVAudioSession.sharedInstance()
+                try? session.setCategory(.playback)
+                // The WebM player draws its own sound, so the session has to be switched on here; nothing else does it.
+                try? session.setActive(true)
+                continuation.resume()
+            }
+        }
+    }
+
+    /// The quiet category the live previews use, so they never interrupt the user's music.
+    static func quiet() {
+        queue.async { try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers]) }
+    }
+}
+
 /// A layer-backed view that shows a player's video, letterboxed to fit.
 private final class VideoLayerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
@@ -22,6 +47,27 @@ private struct VideoSurface: UIViewRepresentable {
     static func dismantleUIView(_ view: VideoLayerView, coordinator: ()) { view.playerLayer.player = nil }
 }
 
+private struct WebMSurface: UIViewRepresentable {
+    let player: WebMPlayer
+
+    final class Coordinator {
+        let player: WebMPlayer
+        init(_ player: WebMPlayer) { self.player = player }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(player) }
+
+    func makeUIView(context: Context) -> WebMSurfaceView {
+        let view = WebMSurfaceView()
+        player.attach(view.displayLayer)
+        return view
+    }
+
+    func updateUIView(_ view: WebMSurfaceView, context: Context) {}
+
+    static func dismantleUIView(_ view: WebMSurfaceView, coordinator: Coordinator) { coordinator.player.detach(view.displayLayer) }
+}
+
 /// Owns the player of the full-screen viewer: play and pause, seeking, and the playback speed.
 @MainActor
 final class VideoController: ObservableObject {
@@ -34,6 +80,10 @@ final class VideoController: ObservableObject {
         return VideoController.speeds.contains(saved) ? saved : 1.0
     }()
     @Published private(set) var unplayable = false
+    /// Set instead of `player` for WebM files, which the system player cannot open (see Core/WebM).
+    @Published private(set) var webm: WebMPlayer?
+    /// Set while a WebM video has sound that cannot be played, so the screen says so instead of staying silent.
+    @Published private(set) var silentReason: String?
     /// Plays the same video again when it ends. Remembered between videos and app launches.
     @Published private(set) var looping = UserDefaults.standard.bool(forKey: "videoLoop")
     var scrubbing = false
@@ -46,12 +96,12 @@ final class VideoController: ObservableObject {
     static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
     func load(_ item: LibraryItem) async {
+        if item.isWebM { await loadWebM(item); return }
         guard player.currentItem == nil else { return }
         let asset = AVURLAsset(url: item.fileURL)
         guard (try? await asset.load(.isPlayable)) == true else { unplayable = true; return }
         duration = ((try? await asset.load(.duration))?.seconds).flatMap { $0.isFinite ? $0 : nil } ?? 0
-        // Sound on, mixing off: this is the one place the app plays audio on purpose.
-        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        await AudioSessionQueue.playback()
         let playerItem = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: playerItem)
         player.actionAtItemEnd = .pause
@@ -79,13 +129,58 @@ final class VideoController: ObservableObject {
         }
     }
 
+    private func loadWebM(_ item: LibraryItem) async {
+        guard webm == nil else { return }
+        let url = item.fileURL
+        // Reading the file's structure is quick but not instant for a long video, so it stays off the main thread.
+        await AudioSessionQueue.playback()
+        guard let made = await Task.detached(priority: .userInitiated, operation: { WebMPlayer(url: url) }).value else { unplayable = true; return }
+        webm = made
+        // The length can still change once the rest of a big file has been read in the background.
+        made.onIndexComplete = { [weak self] in Task { @MainActor in self?.duration = made.duration } }
+        duration = made.duration
+        made.observeTime(every: 0.2) { [weak self] time in
+            Task { @MainActor in
+                guard let self, self.webm === made, !self.scrubbing else { return }
+                if self.silentReason != made.silentReason { self.silentReason = made.silentReason }
+                self.current = min(time, made.endTime)
+                if self.isPlaying, time >= made.endTime { self.webmEnded() }
+            }
+        }
+    }
+
+    private func webmEnded() {
+        guard let webm else { return }
+        if looping {
+            current = 0
+            webm.seek(to: 0, rate: Float(speed))
+        } else {
+            webm.pause()
+            isPlaying = false
+            current = webm.endTime
+        }
+    }
+
     func play() {
+        if let webm {
+            if current >= webm.endTime - 0.25 {
+                current = 0
+                webm.seek(to: 0, rate: Float(speed))
+            } else {
+                webm.play(rate: Float(speed))
+            }
+            isPlaying = true
+            return
+        }
         if duration > 0, current >= duration - 0.25 { seek(to: 0) }
         // Setting the rate starts playback at that speed; the speed survives pausing because it is kept here.
         player.rate = Float(speed)
     }
 
-    func pause() { player.pause() }
+    func pause() {
+        if let webm { webm.pause(); isPlaying = false; return }
+        player.pause()
+    }
 
     /// Jumps forward or back by `delta` seconds and keeps playing or staying paused as it was.
     func skip(by delta: Double) {
@@ -96,6 +191,7 @@ final class VideoController: ObservableObject {
 
     func seek(to seconds: Double) {
         current = seconds
+        if let webm { webm.seek(to: seconds, rate: isPlaying ? Float(speed) : 0); return }
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
@@ -106,6 +202,7 @@ final class VideoController: ObservableObject {
         let now = CACurrentMediaTime()
         guard now - lastScrub >= 0.04 else { return }
         lastScrub = now
+        if let webm { webm.seek(to: seconds, rate: 0); return }
         let tolerance = CMTime(seconds: 0.15, preferredTimescale: 600)
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
@@ -118,10 +215,13 @@ final class VideoController: ObservableObject {
     func setSpeed(_ value: Double) {
         speed = value
         UserDefaults.standard.set(value, forKey: "videoSpeed")
-        if isPlaying { player.rate = Float(value) }
+        if isPlaying { if let webm { webm.setRate(Float(value)) } else { player.rate = Float(value) } }
     }
 
     func stop() {
+        webm?.stop()
+        webm = nil
+        silentReason = nil
         player.pause()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -130,8 +230,7 @@ final class VideoController: ObservableObject {
         statusObservation = nil
         player.replaceCurrentItem(with: nil)
         isPlaying = false
-        // Back to the quiet category the live previews use, so they never interrupt the user's music.
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        AudioSessionQueue.quiet()
     }
 }
 
@@ -206,7 +305,7 @@ struct VideoViewer: View {
                     }
                     .accessibilityLabel(S.actionOpen)
                 } else {
-                    VideoSurface(player: controller.player)
+                    surface
                         .scaleEffect(scale)
                         .offset(offset)
                         .contentShape(Rectangle())
@@ -278,6 +377,10 @@ struct VideoViewer: View {
         }
         // The screen goes back to portrait when the whole viewer closes (see ViewerOverlay), not when one page goes away.
         .onDisappear { controller.stop() }
+    }
+
+    @ViewBuilder private var surface: some View {
+        if let webm = controller.webm { WebMSurface(player: webm) } else { VideoSurface(player: controller.player) }
     }
 
     // MARK: Zoom
@@ -361,6 +464,12 @@ struct VideoViewer: View {
 
     private var controls: some View {
         VStack(spacing: Spacing.xs) {
+            if let reason = controller.silentReason {
+                Label(reason, systemImage: "speaker.slash.fill")
+                    .textStyle(.labelMedium, color: .white)
+                    .padding(.horizontal, Spacing.sm).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.18)))
+            }
             transport
             seekRow
         }

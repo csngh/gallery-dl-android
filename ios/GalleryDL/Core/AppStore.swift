@@ -91,9 +91,12 @@ final class AppStore: ObservableObject {
 
     /// Moves one waiting link into the download queue. Returns false if it is no longer waiting.
     @discardableResult
-    func start(_ id: Int64) -> Bool {
+    func start(_ id: Int64, folderName: String? = nil) -> Bool {
         guard task(id)?.status == .pending else { return false }
-        update(id) { $0.status = .queued }
+        update(id) {
+            $0.status = .queued
+            if let folderName { $0.folderName = folderName }
+        }
         commit()
         return true
     }
@@ -126,7 +129,8 @@ final class AppStore: ObservableObject {
         update(id) {
             $0.status = .downloading; $0.error = nil; $0.fileIndex = 0; $0.totalFiles = 0; $0.fileProgress = -1
         }
-        commit()
+        // The count starts from what the library really holds for this link, so a refresh never adds to a stale number.
+        fileSaved(id)
         return true
     }
 
@@ -139,8 +143,11 @@ final class AppStore: ObservableObject {
         commit()
     }
 
+    /// The number of files saved is what the library holds for the link, so it stays right after deletions and refreshes.
     func fileSaved(_ id: Int64) {
-        update(id) { $0.filesDownloaded += 1 }
+        guard let url = task(id)?.url else { return }
+        let count = data.items.filter { $0.sourceUrl == url }.count
+        update(id) { $0.filesDownloaded = count }
         commit()
     }
 
@@ -150,7 +157,10 @@ final class AppStore: ObservableObject {
         publish()   // progress is not worth a disk write of its own
     }
 
-    func countSaved(_ id: Int64) -> Int { task(id)?.filesDownloaded ?? 0 }
+    func countSaved(_ id: Int64) -> Int {
+        fileSaved(id)
+        return task(id)?.filesDownloaded ?? 0
+    }
 
     func finish(_ id: Int64, status: TaskStatus, error: String?, failedFiles: Int) {
         update(id) {
@@ -174,7 +184,7 @@ final class AppStore: ObservableObject {
     }
 
     func requeue(_ id: Int64) {
-        update(id) { $0.status = .queued; $0.currentFile = nil; $0.error = nil; $0.failedFiles = 0; $0.finishedAt = nil }
+        update(id) { $0.status = .queued; $0.currentFile = nil; $0.error = nil; $0.failedFiles = 0; $0.finishedAt = nil; $0.hiddenFromQueue = nil }
         commit()
     }
 
@@ -186,7 +196,7 @@ final class AppStore: ObservableObject {
         update(id) {
             $0.url = url; $0.site = site; $0.status = .queued; $0.filesDownloaded = 0; $0.failedFiles = 0
             $0.currentFile = nil; $0.error = nil; $0.fileIndex = 0; $0.totalFiles = 0; $0.fileProgress = -1
-            $0.finishedAt = nil
+            $0.finishedAt = nil; $0.hiddenFromQueue = nil
         }
         commit()
         return true
@@ -201,7 +211,7 @@ final class AppStore: ObservableObject {
             let status = data.tasks[index].status
             guard status == .pending || status == .completed || status == .failed || status == .cancelled else { continue }
             data.tasks[index].status = .queued; data.tasks[index].currentFile = nil
-            data.tasks[index].error = nil; data.tasks[index].failedFiles = 0; data.tasks[index].finishedAt = nil
+            data.tasks[index].error = nil; data.tasks[index].failedFiles = 0; data.tasks[index].finishedAt = nil; data.tasks[index].hiddenFromQueue = nil
             count += 1
         }
         if count > 0 { commit() }
@@ -213,7 +223,7 @@ final class AppStore: ObservableObject {
             let task = data.tasks[index]
             if task.status == .failed || (task.status == .completed && (task.failedFiles > 0 || task.error != nil)) {
                 data.tasks[index].status = .queued; data.tasks[index].currentFile = nil
-                data.tasks[index].error = nil; data.tasks[index].failedFiles = 0; data.tasks[index].finishedAt = nil
+                data.tasks[index].error = nil; data.tasks[index].failedFiles = 0; data.tasks[index].finishedAt = nil; data.tasks[index].hiddenFromQueue = nil
             }
         }
         commit()
@@ -225,6 +235,14 @@ final class AppStore: ObservableObject {
         commit()
     }
 
+    /// The Queue's "Clear finished": the links leave the Queue but stay on Home, which is the collection of links to
+    /// refresh. A later Renew fetches only what the library does not have.
+    func hideFinishedFromQueue() {
+        for index in data.tasks.indices where data.tasks[index].isFinished { data.tasks[index].hiddenFromQueue = true }
+        commit()
+    }
+
+    /// Settings > Clear history: really deletes the finished links, and the memory of what each had saved.
     func clearFinished() {
         let finished = data.tasks.filter(\.isFinished).map(\.id)
         finished.forEach(MediaFiles.deleteArchive)
@@ -243,11 +261,76 @@ final class AppStore: ObservableObject {
         return folder.id
     }
 
+    /// The library folder a link's files are in, or nil while it has none.
+    func folderName(forLink url: String) -> String? {
+        guard let item = data.items.first(where: { $0.sourceUrl == url && $0.folderId != nil }) else { return nil }
+        return data.folders.first(where: { $0.id == item.folderId })?.name
+    }
+
+    /// The other links that already use a folder with this name: ones saved in it, and ones given the name.
+    func linksUsing(folder name: String, except taskId: Int64) -> [String] {
+        guard let clean = cleanFolderName(name) else { return [] }
+        var links: [String] = data.tasks.filter { $0.id != taskId && $0.folderName?.caseInsensitiveCompare(clean) == .orderedSame }.map(\.url)
+        if let folder = data.folders.first(where: { $0.name.caseInsensitiveCompare(clean) == .orderedSame }) {
+            links += data.items.filter { $0.folderId == folder.id }.map(\.sourceUrl)
+        }
+        var seen = Set<String>()
+        return links.filter { seen.insert($0).inserted }
+    }
+
+    /// The direct addresses of the files the library already has for a link.
+    func fileUrls(forSource sourceUrl: String) -> [String] {
+        data.items.filter { $0.sourceUrl == sourceUrl }.compactMap(\.fileUrl).filter { !$0.isEmpty }
+    }
+
+    /// The names of the files the library already has for a link.
+    func fileNames(forSource sourceUrl: String) -> [String] {
+        data.items.filter { $0.sourceUrl == sourceUrl }.map(\.displayName)
+    }
+
+    /// A file a download already had is not fetched again: it gets the address it has now and, if an earlier download of the
+    /// same link saved it (the link was removed and added again), it now belongs to this one. Returns true when handed over.
     @discardableResult
-    func addItem(relativePath: String, displayName: String, mimeType: String, sourceUrl: String, taskId: Int64, folderId: Int64) -> LibraryItem {
+    func adoptFile(sourceUrl: String, name: String, fileUrl: String, taskId: Int64, folder: String = "") -> Bool {
+        var changed = false, handedOver = false
+        for index in data.items.indices where isSameFile(data.items[index], sourceUrl: sourceUrl, name: name, fileUrl: fileUrl) {
+            if data.items[index].fileUrl != fileUrl { data.items[index].fileUrl = fileUrl; changed = true }
+            if data.items[index].taskId != taskId { data.items[index].taskId = taskId; changed = true; handedOver = true }
+            if !folder.isEmpty, moveToFolder(index, folder) { changed = true }
+        }
+        if changed { commit() }
+        return handedOver
+    }
+
+    /// The same file of the same link: by its name (in one fixed spelling, so accents compare equal however they were stored)
+    /// or by its direct address, which stays the same when a name that carries a position number changes.
+    private func isSameFile(_ item: LibraryItem, sourceUrl: String, name: String, fileUrl: String) -> Bool {
+        guard item.sourceUrl == sourceUrl else { return false }
+        if item.displayName.precomposedStringWithCanonicalMapping == name.precomposedStringWithCanonicalMapping { return true }
+        return !fileUrl.isEmpty && item.fileUrl == fileUrl
+    }
+
+    /// A file saved under an older folder name, met again by a refreshed link, goes into the folder gallery-dl names for it
+    /// now: on disk and in the library. A folder this empties is removed, and its tag goes to the new folder if that has none.
+    private func moveToFolder(_ index: Int, _ folder: String) -> Bool {
+        let current = data.items[index].folderId
+        if let existing = data.folders.first(where: { $0.name.caseInsensitiveCompare(folder) == .orderedSame }), existing.id == current { return false }
+        let target = ensureFolder(folder)
+        if let moved = MediaFiles.move(relative: data.items[index].relativePath, toFolder: folder) { data.items[index].relativePath = moved }
+        data.items[index].folderId = target
+        if let old = current, !data.items.contains(where: { $0.folderId == old }), let oldFolder = data.folders.first(where: { $0.id == old }) {
+            if let tag = oldFolder.tag, let at = data.folders.firstIndex(where: { $0.id == target }), data.folders[at].tag == nil { data.folders[at].tag = tag }
+            data.folders.removeAll { $0.id == old }
+            MediaFiles.removeIfEmpty(folder: oldFolder.name)
+        }
+        return true
+    }
+
+    @discardableResult
+    func addItem(relativePath: String, displayName: String, mimeType: String, sourceUrl: String, taskId: Int64, folderId: Int64, fileUrl: String? = nil) -> LibraryItem {
         let item = LibraryItem(
             id: data.nextItemId, relativePath: relativePath, displayName: displayName, mimeType: mimeType,
-            sourceUrl: sourceUrl, taskId: taskId, folderId: folderId, addedAt: Date(),
+            sourceUrl: sourceUrl, taskId: taskId, folderId: folderId, addedAt: Date(), fileUrl: fileUrl,
         )
         data.nextItemId += 1
         data.items.append(item)
@@ -264,10 +347,10 @@ final class AppStore: ObservableObject {
     }
 
     /// Only folders that still contain items. Most recently updated first.
-    func folderSummaries(query: String) -> [FolderSummary] {
+    func folderSummaries(query: String, newestFirst: Bool = true) -> [FolderSummary] {
         let needle = query.trimmingCharacters(in: .whitespaces)
         let byFolder = Dictionary(grouping: data.items.filter { $0.folderId != nil }, by: { $0.folderId! })
-        return data.folders.compactMap { folder -> (FolderSummary, Date)? in
+        let summaries = data.folders.compactMap { folder -> (FolderSummary, Date)? in
             guard let inside = byFolder[folder.id], !inside.isEmpty else { return nil }
             if !needle.isEmpty && !folder.name.localizedCaseInsensitiveContains(needle)
                 && !(folder.tag ?? "").localizedCaseInsensitiveContains(needle) { return nil }
@@ -275,15 +358,39 @@ final class AppStore: ObservableObject {
             let summary = FolderSummary(id: folder.id, name: folder.name, itemCount: inside.count, cover: newest, sourceUrl: newest?.sourceUrl, tag: folder.tag)
             return (summary, inside.map(\.addedAt).max() ?? .distantPast)
         }
-        .sorted { $0.1 > $1.1 }
+        .sorted { newestFirst ? $0.1 > $1.1 : $0.1 < $1.1 }
         .map(\.0)
+        // Favorites stays at the top, whatever the date order.
+        let ordered = summaries
+        return ordered.filter { isFavoritesFolder($0.name) } + ordered.filter { !isFavoritesFolder($0.name) }
     }
 
-    func items(inFolder folderId: Int64, query: String) -> [LibraryItem] {
+    /// Copies files into the Favorites folder. The copies stay when the link or the folder they came from is deleted, and go
+    /// only when deleted here. Each copy keeps the link and the file's own address. Returns how many were added; a file
+    /// already in Favorites is skipped.
+    func addFavorites(_ items: [LibraryItem]) -> Int {
+        var added = 0
+        for item in items where !item.sourceUrl.hasPrefix("favorite:") {
+            let source = favoriteSource(item.sourceUrl)
+            let name = item.displayName.precomposedStringWithCanonicalMapping
+            if data.items.contains(where: {
+                $0.sourceUrl == source && ($0.displayName.precomposedStringWithCanonicalMapping == name || (item.fileUrl != nil && $0.fileUrl == item.fileUrl))
+            }) { continue }
+            guard let saved = try? MediaFiles.copyFile(of: item, toFolder: favoritesFolder) else { continue }
+            addItem(
+                relativePath: saved.relative, displayName: item.displayName, mimeType: item.mimeType,
+                sourceUrl: source, taskId: 0, folderId: ensureFolder(favoritesFolder), fileUrl: item.fileUrl,
+            )
+            added += 1
+        }
+        return added
+    }
+
+    func items(inFolder folderId: Int64, query: String, newestFirst: Bool = true) -> [LibraryItem] {
         let needle = query.trimmingCharacters(in: .whitespaces)
         return data.items
             .filter { $0.folderId == folderId && (needle.isEmpty || $0.displayName.localizedCaseInsensitiveContains(needle)) }
-            .sorted { ($0.addedAt, $0.id) > ($1.addedAt, $1.id) }
+            .sorted { newestFirst ? ($0.addedAt, $0.id) > ($1.addedAt, $1.id) : ($0.addedAt, $0.id) < ($1.addedAt, $1.id) }
     }
 
     /// Removes the files as well as the library entries.

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -36,8 +37,8 @@ fun PendingActionDialog(
 ) {
     when (action) {
         PendingAction.ClearFinished -> ConfirmDialog(
-            title = stringResource(R.string.clear_finished_title),
-            message = stringResource(R.string.clear_finished_message),
+            title = stringResource(R.string.clear_queue_title),
+            message = stringResource(R.string.clear_queue_message),
             confirmLabel = stringResource(R.string.action_clear),
             onConfirm = {
                 onClearFinished()
@@ -84,6 +85,23 @@ fun StartButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
         Text(stringResource(R.string.action_start), modifier = Modifier.padding(start = Spacing.Xs))
+    }
+}
+
+/** Stops every download at once, the running one and the ones waiting; shown only while at least one is active. */
+@Composable
+fun StopAllButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    Button(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = ActionColors.Negative,
+            contentColor = ActionColors.OnNegative,
+        ),
+    ) {
+        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
+        Text(stringResource(R.string.action_stop_all, count), modifier = Modifier.padding(start = Spacing.Sm))
     }
 }
 

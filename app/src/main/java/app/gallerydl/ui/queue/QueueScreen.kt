@@ -77,6 +77,7 @@ import app.gallerydl.ui.components.FullLinkDialog
 import androidx.compose.foundation.clickable
 import app.gallerydl.ui.components.StartButton
 import app.gallerydl.ui.components.StartAllButton
+import app.gallerydl.ui.components.StopAllButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +87,7 @@ fun QueueScreen(viewModel: QueueViewModel = viewModel(factory = AppViewModelProv
     val hasFinished = tasks?.any { it.status.isFinished() } == true
     var pending by remember { mutableStateOf<PendingAction?>(null) }
     var fullLink by remember { mutableStateOf<String?>(null) }
+    var folderAsk by remember { mutableStateOf<app.gallerydl.data.DownloadTask?>(null) }
 
     Column(Modifier.readableWidth()) {
         TopAppBar(
@@ -109,6 +111,11 @@ fun QueueScreen(viewModel: QueueViewModel = viewModel(factory = AppViewModelProv
             modifier = Modifier.padding(horizontal = Spacing.Md, vertical = Spacing.Sm),
         )
         val loaded = tasks
+        StopAllButton(
+            count = loaded?.count { it.status == TaskStatus.QUEUED || it.status == TaskStatus.DOWNLOADING } ?: 0,
+            onClick = viewModel::stopAll,
+            modifier = Modifier.padding(horizontal = Spacing.Md),
+        )
         StartAllButton(
             count = loaded?.count { it.status == TaskStatus.PENDING } ?: 0,
             onClick = viewModel::startAll,
@@ -138,13 +145,33 @@ fun QueueScreen(viewModel: QueueViewModel = viewModel(factory = AppViewModelProv
                             }
                         },
                         onRetry = { viewModel.retry(task.id) },
-                        onStart = { viewModel.start(task.id) },
+                        onStart = { folderAsk = task },
                         onViewLink = { fullLink = task.url },
                         onRemove = { pending = PendingAction.Remove(task.id) },
                     )
                 }
             }
         }
+    }
+
+    PendingActionDialog(
+        action = pending,
+        onClearFinished = viewModel::clearFinished,
+        onRemove = viewModel::remove,
+        onCancelDownload = viewModel::cancel,
+        onDismiss = { pending = null },
+    )
+    fullLink?.let { url -> FullLinkDialog(url = url, onDismiss = { fullLink = null }) }
+    folderAsk?.let { task ->
+        app.gallerydl.ui.components.StartFolderDialog(
+            task = task,
+            choice = viewModel.folderChoice,
+            onStart = { name ->
+                viewModel.start(task.id, name)
+                folderAsk = null
+            },
+            onDismiss = { folderAsk = null },
+        )
     }
 }
 

@@ -56,6 +56,8 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val registry = container.cancelRegistry
         registry.clear(task.id) // drop a stale request left by a cancel that arrived as the task finished
         if (tasks.markDownloading(task.id) == 0) return // cancelled while waiting its turn
+        // The count starts from what the library really holds for this link, so a refresh never adds to a stale number.
+        tasks.fileSaved(task.id)
 
         val outDir = File(applicationContext.cacheDir, "gdl/${task.id}").apply {
             deleteRecursively()
@@ -106,9 +108,28 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 }
             }
 
+            override fun onSkipped(name: String, fileUrl: String, folder: String) {
+                runBlocking(Dispatchers.IO) {
+                    runCatching {
+                        // A file saved by an earlier download of this link counts for this one too.
+                        if (container.libraryRepository.adoptFile(task.url, name, fileUrl, task.id)) tasks.fileSaved(task.id)
+                    }
+                    // A file saved under an older folder name moves to the folder gallery-dl names it now (or the one the user
+                    // chose for this link). Nothing is fetched again.
+                    val folder = downloadFolder(task.folderName ?: folder)
+                    if (folder.isNotBlank()) {
+                        runCatching {
+                            container.libraryRepository.moveToFolder(task.url, name, fileUrl, folder) { item ->
+                                container.mediaSaver.moveToFolder(Uri.parse(item.contentUri), item.mimeType, folder)
+                            }
+                        }
+                    }
+                }
+            }
+
             override fun onFile(path: String, sourceUrl: String) {
                 runBlocking(Dispatchers.IO) {
-                    runCatching { importFile(task, File(path), outDir, linkFolder, destination?.treeUri) }
+                    runCatching { importFile(task, File(path), outDir, linkFolder, destination?.treeUri, sourceUrl) }
                         .onFailure {
                             importError = it.message
                             importFailures++
@@ -120,31 +141,35 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         // The options as they are when this download starts; later changes apply to the next one.
         val optionsJson = container.settingsRepository.options.first().toJson(container.settingsRepository.cookiesPath())
 
-        // One archive per link: a retry only fetches the files that are still missing.
+        // What the library has for this link is not fetched again; anything missing from it is. The archive path only lets
+        // the bridge remove a record an earlier version left.
         val archive = File(applicationContext.filesDir, "archives/${task.id}.sqlite")
         archive.parentFile?.mkdirs()
+        val knownFiles = runCatching { container.libraryRepository.fileNamesFor(task.url) }.getOrDefault(emptyList())
+        val knownUrls = runCatching { container.libraryRepository.fileUrlsFor(task.url) }.getOrDefault(emptyList())
         val outcome = withContext(Dispatchers.IO) {
-            runCatching { container.pythonBridge.download(task.url, outDir.path, archive.path, optionsJson, listener) }
+            runCatching { container.pythonBridge.download(task.url, outDir.path, archive.path, optionsJson, listener, knownFiles, knownUrls) }
         }
         val userCancelled = registry.isRequested(task.id)
         registry.clear(task.id)
         outDir.deleteRecursively()
 
         if (!userCancelled && storageStop) {
-            // The storage filled up while this link was downloading. It goes back to the queue; the archive makes the
-            // run that follows skip the files that were already saved.
+            // The storage filled up while this link was downloading. It goes back to the queue; the run that follows
+            // skips the files the library already has.
             withContext(NonCancellable) { tasks.pause(task.id) }
             pauseForStorage()
             return
         }
         if (!userCancelled && coroutineJob.isCancelled) {
-            // The system stopped the worker (network lost, ...). Keep the task queued; the archive makes
-            // the resumed run skip the files that were already saved.
+            // The system stopped the worker (network lost, ...). Keep the task queued; the resumed run
+            // skips the files the library already has.
             withContext(NonCancellable) { tasks.pause(task.id) }
             throw CancellationException("Worker stopped")
         }
         val cancelled = userCancelled
 
+        tasks.fileSaved(task.id)
         val saved = tasks.countSaved(task.id)
         val result = outcome.getOrNull()
         val failedFiles = (result?.failed ?: 0) + importFailures
@@ -182,14 +207,16 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         root: File,
         linkFolder: String,
         tree: Uri?,
+        fileUrl: String?,
     ) {
-        // Every link gets its own folder; anything gallery-dl nests deeper stays below it.
-        val nested = file.parentFile?.relativeTo(root)?.path.orEmpty().replace(File.separatorChar, '/')
-        val subDir = listOf(linkFolder, nested).filter { it.isNotEmpty() }.joinToString("/")
-        val saved = container.mediaSaver.save(file, subDir, tree)
+        // The folder is the innermost one gallery-dl made for this file, exactly as it named it; its parents are left out. A
+        // file gallery-dl left directly in the root has no folder of its own and goes in one named after the link.
+        // A link the user gave a folder name saves everything there.
+        val folder = downloadFolder(task.folderName ?: file.parentFile?.takeIf { it.canonicalFile != root.canonicalFile }?.name?.takeIf { it.isNotBlank() } ?: linkFolder)
+        val saved = container.mediaSaver.save(file, folder, tree)
         file.delete()
         // Looked up per file, so deleting the folder in the library mid-download cannot leave a dangling id.
-        val folderId = container.libraryRepository.ensureFolder(linkFolder)
+        val folderId = container.libraryRepository.ensureFolder(folder)
         val item = LibraryItem(
             contentUri = saved.uri.toString(),
             displayName = saved.displayName,
@@ -198,6 +225,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             taskId = task.id,
             folderId = folderId,
             addedAt = System.currentTimeMillis(),
+            fileUrl = fileUrl?.takeIf { it.isNotBlank() },
         )
         val id = container.libraryRepository.addItem(item)
         // The silent preview of a new video is made right away, in the background, one at a time.

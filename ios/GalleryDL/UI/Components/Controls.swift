@@ -118,6 +118,18 @@ struct StartButton: View {
 }
 
 /// Starts every link that is waiting, shown only while at least one is.
+/// Stops every download at once, the running one and the ones waiting; shown only while at least one is active.
+struct StopAllButton: View {
+    let count: Int
+    let action: () -> Void
+    var body: some View {
+        if count > 0 {
+            FilledPill(title: S.actionStopAll(count), symbol: "stop.fill", container: ActionColors.negative, content: ActionColors.onNegative, fillWidth: true, action: action)
+                .padding(.horizontal, Spacing.md)
+        }
+    }
+}
+
 struct StartAllButton: View {
     let count: Int
     let action: () -> Void
@@ -331,9 +343,9 @@ struct TopBar<Leading: View, Trailing: View>: View {
     var body: some View {
         HStack(spacing: Spacing.sm) {
             leading
-            // A long title (a folder with a tag) shrinks a little and may take a second line instead of being cut off.
+            // The title stays on one line, whatever buttons sit beside it: a long one shrinks a little, then is cut with "...".
             VStack(alignment: .leading, spacing: 0) {
-                Text(title).textStyle(.titleLarge).lineLimit(2).minimumScaleFactor(0.7)
+                Text(title).textStyle(.titleLarge).lineLimit(1).minimumScaleFactor(0.7)
                 if let subtitle {
                     Text(subtitle).textStyle(.bodySmall, color: Brand.onSurfaceVariant).lineLimit(1)
                 }
@@ -530,6 +542,39 @@ struct DialogHost: View {
                 dialog
             }
             .transition(.opacity)
+        }
+    }
+}
+
+/// Where a file came from: the link the user added, and the file's own direct address, each with a Copy button.
+struct ItemDetailsDialog: View {
+    @EnvironmentObject private var ui: UIState
+    let item: LibraryItem
+
+    var body: some View {
+        DialogCard(title: item.displayName) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.md) {
+                    // A favourite keeps the link it was copied from, so it can still be traced after that link is gone.
+                    block(S.detailsSourceLink, originalSource(item.sourceUrl), note: nil)
+                    block(S.detailsFileAddress, item.fileUrl, note: item.fileUrl == nil ? S.detailsFileAddressMissing : S.detailsFileAddressNote)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 360)
+        } actions: {
+            TextPill(title: S.actionClose, color: Brand.onSurfaceVariant) { ui.dismissDialog() }
+        }
+    }
+
+    private func block(_ label: String, _ url: String?, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(label).textStyle(.labelLarge, color: Brand.onSurfaceVariant)
+            if let url {
+                Text(url).textStyle(.bodyMedium).textSelectionIfAvailable()
+                TextPill(title: S.actionCopy, color: Brand.primary) { UIPasteboard.general.string = url }
+            }
+            if let note { Text(note).textStyle(.bodySmall, color: Brand.onSurfaceVariant) }
         }
     }
 }

@@ -34,8 +34,20 @@ final class DownloadEngine {
 
     // MARK: Queue operations (DownloadRepository)
 
-    func start(_ id: Int64) { if store.start(id) { scheduleDrain() } }
+    func start(_ id: Int64, folderName: String? = nil) { if store.start(id, folderName: folderName) { scheduleDrain() } }
     func startAll() { if store.startAll() > 0 { scheduleDrain() } }
+
+    /// Stops everything at once: the links waiting for their turn are cancelled directly, so the queue cannot move on to the
+    /// next one, and then the download that is running. Each link keeps its record of what was saved.
+    /// The folder gallery-dl would save a link in, looked up before the link starts; "" when it cannot be found out.
+    func suggestFolder(for url: String) async -> String {
+        let reply = try? await python.call("preview", ["url": url, "options": settings.options.toJson(cookiesPath: settings.cookiesPath)])
+        return reply?["folder"] as? String ?? ""
+    }
+
+    func cancelAll() {
+        for task in store.tasks where task.status == .queued || task.status == .downloading { cancel(task.id) }
+    }
 
     func cancel(_ id: Int64) {
         if store.cancelIfQueued(id) { return }
@@ -65,7 +77,7 @@ final class DownloadEngine {
     }
 
     /// Applies a change of the Wi-Fi only setting to work that is already waiting. A download in progress is
-    /// paused and carries on from its archive, so no file is fetched twice.
+    /// paused and carries on from the files the library already has, so no file is fetched twice.
     func applyNetworkSetting() { networkChanged() }
 
     /// Called at launch: anything that was interrupted last time waits in the queue again.
@@ -112,6 +124,8 @@ final class DownloadEngine {
         var importFailures = 0
         var importError: String?
         var linkFolder = ""
+        /// The folder the user chose for this link; every file goes there.
+        var pinnedFolder: String?
         var scratch = URL(fileURLWithPath: "/")
     }
 
@@ -123,18 +137,22 @@ final class DownloadEngine {
 
         let run = Run()
         run.linkFolder = linkFolderName(task.url)
+        run.pinnedFolder = task.folderName
         run.scratch = MediaFiles.scratch(for: task.id)
         try? FileManager.default.removeItem(at: run.scratch)
         try? FileManager.default.createDirectory(at: run.scratch, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: MediaFiles.archives, withIntermediateDirectories: true)
 
         // The options as they are when this download starts; later changes apply to the next one.
-        // One archive per link: a retry only fetches the files that are still missing.
+        // What the library has for this link is not fetched again; anything missing from it is. The archive path only lets
+        // the bridge remove a record an earlier version left.
         let arguments: [String: Any] = [
             "url": task.url,
             "base_dir": run.scratch.path,
             "archive_path": MediaFiles.archive(for: task.id).path,
             "options": settings.options.toJson(cookiesPath: settings.cookiesPath),
+            // Files the library already has for this link are not fetched again (the link may have been removed and added again).
+            "known": ["names": store.fileNames(forSource: task.url), "urls": store.fileUrls(forSource: task.url)],
         ]
 
         let poller = Task { [weak self] in
@@ -159,8 +177,8 @@ final class DownloadEngine {
 
         let userCancelled = cancelRequested.remove(task.id) != nil
         if !userCancelled && pausedRuns.remove(task.id) != nil {
-            // Stopped by the system or the network, not by the user: keep it queued. The archive makes the
-            // resumed run skip the files that were already saved.
+            // Stopped by the system or the network, not by the user: keep it queued. The resumed run
+            // skips the files the library already has.
             store.pause(task.id)
             return
         }
@@ -212,9 +230,14 @@ final class DownloadEngine {
             file: state["name"] as? String ?? "",
         )
         for item in state["files"] as? [[String: Any]] ?? [] {
+            if let name = item["skipped"] as? String, let url = item["url"] as? String, !url.isEmpty {
+                let folder = downloadFolder(run.pinnedFolder ?? item["folder"] as? String ?? "")
+                if store.adoptFile(sourceUrl: task.url, name: name, fileUrl: url, taskId: task.id, folder: folder) { store.fileSaved(task.id) }
+                continue
+            }
             guard let path = item["path"] as? String else { continue }
             do {
-                try importFile(URL(fileURLWithPath: path), task: task, run: run)
+                try importFile(URL(fileURLWithPath: path), task: task, run: run, fileUrl: item["url"] as? String)
             } catch {
                 run.importError = error.localizedDescription
                 run.importFailures += 1
@@ -222,14 +245,18 @@ final class DownloadEngine {
         }
     }
 
-    private func importFile(_ file: URL, task: DownloadTask, run: Run) throws {
-        let saved = try MediaFiles.importFile(file, scratchRoot: run.scratch, linkFolder: run.linkFolder)
+    private func importFile(_ file: URL, task: DownloadTask, run: Run, fileUrl: String?) throws {
+        // The folder is the innermost one gallery-dl made for this file, exactly as it named it. A file gallery-dl left
+        // directly in the root has no folder of its own and goes in one named after the link.
+        let folder = downloadFolder(run.pinnedFolder ?? MediaFiles.innermostFolder(of: file, below: run.scratch) ?? run.linkFolder)
+        let saved = try MediaFiles.importFile(file, folder: folder)
         // Looked up per file, so deleting the folder in the library mid-download cannot leave a dangling id.
-        let folderId = store.ensureFolder(run.linkFolder)
+        let folderId = store.ensureFolder(folder)
         let item = store.addItem(
             relativePath: saved.relative, displayName: saved.name,
             mimeType: mimeType(forExtension: (saved.name as NSString).pathExtension),
             sourceUrl: task.url, taskId: task.id, folderId: folderId,
+            fileUrl: fileUrl.flatMap { $0.isEmpty ? nil : $0 },
         )
         store.fileSaved(task.id)
         // The silent preview of a new video is made right away, in the background, one at a time.

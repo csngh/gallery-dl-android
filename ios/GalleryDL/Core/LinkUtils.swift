@@ -53,17 +53,6 @@ func siteDisplayName(_ site: String) -> String {
     site.contains(".") ? site : site.prefix(1).uppercased() + site.dropFirst()
 }
 
-/// Short, readable name for a link folder: the last path segment, e.g. "AbC123" or "My Photo".
-func linkDisplayName(_ url: String?, fallback: String) -> String {
-    guard let url, let components = parseLink(url) else { return fallback }
-    let last = components.path.split(separator: "/").last.map(String.init)
-    let segment = last ?? stripWww(components.host ?? "")
-    let ext = segment.contains(".") ? String(segment.split(separator: ".", omittingEmptySubsequences: false).last ?? "") : ""
-    let stem = (2...4).contains(ext.count) ? String(segment.dropLast(ext.count + 1)) : segment
-    let name = stem.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespaces)
-    return name.isEmpty ? fallback : name
-}
-
 /// The title a folder shows: its tag when the user gave it one (the name moves to the line below), its name otherwise.
 func folderTitle(_ displayName: String, _ tag: String?) -> String {
     guard let tag = tag?.trimmingCharacters(in: .whitespaces), !tag.isEmpty else { return displayName }
@@ -77,6 +66,32 @@ func folderSubtitle(_ displayName: String, _ tag: String?) -> String? {
 }
 
 /// Folder name for one link: host plus the last two path segments, e.g. "imgur.com_a_AbC123".
+/// The library folder of saved favourites. Its files are copies kept inside the app, so they outlive the link they came from.
+let favoritesFolder = "Favorites"
+private let favoritePrefix = "favorite:"
+
+func isFavoritesFolder(_ name: String) -> Bool { name.caseInsensitiveCompare(favoritesFolder) == .orderedSame }
+
+/// A favourite remembers the link it came from, marked so a refresh of that link never mistakes the copy for its own file.
+func favoriteSource(_ sourceUrl: String) -> String { favoritePrefix + sourceUrl }
+
+func originalSource(_ sourceUrl: String) -> String {
+    sourceUrl.hasPrefix(favoritePrefix) ? String(sourceUrl.dropFirst(favoritePrefix.count)) : sourceUrl
+}
+
+/// A downloaded file never goes into the favourites folder, even when gallery-dl or the user names its folder that.
+func downloadFolder(_ name: String) -> String { isFavoritesFolder(name) ? "\(name) (link)" : name }
+
+/// A folder name typed by the user, made safe to use as a folder: no path or reserved characters; nil when nothing is left.
+func cleanFolderName(_ raw: String?) -> String? {
+    guard let raw else { return nil }
+    let bad = CharacterSet(charactersIn: "\\/:*?\"<>|").union(.controlCharacters)
+    let replaced = raw.unicodeScalars.map { bad.contains($0) ? "_" : String($0) }.joined()
+    let trimmed = String(replaced.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: ".")).prefix(120))
+        .trimmingCharacters(in: .whitespaces)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
 func linkFolderName(_ url: String) -> String {
     guard let components = parseLink(url) else { return "download" }
     let host = stripWww(components.host ?? "")

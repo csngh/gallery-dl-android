@@ -1,5 +1,57 @@
 import SwiftUI
 
+// MARK: - Folder for a link
+
+/// Asked before a link starts for the first time: which library folder its files go in. The name gallery-dl would use is
+/// looked up and filled in; keeping it leaves the folder to gallery-dl, typing another name pins the link to that folder.
+/// A name another link already uses gets a warning, and can still be chosen.
+struct StartFolderDialog: View {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var ui: UIState
+    @EnvironmentObject private var store: AppStore
+    let task: DownloadTask
+    /// nil while the name is being looked up.
+    @State private var suggested: String?
+    @State private var typed: String?
+
+    var body: some View {
+        let shown = typed ?? suggested ?? ""
+        let others = store.linksUsing(folder: shown, except: task.id)
+        DialogCard(title: S.startFolderTitle) {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text(task.url).textStyle(.bodySmall, color: Brand.onSurfaceVariant).lineLimit(2)
+                Text(S.startFolderMessage).textStyle(.bodyMedium)
+                OutlinedField(label: S.startFolderLabel, text: Binding(get: { shown }, set: { typed = $0 }), submitLabel: .done, onSubmit: begin)
+                if suggested == nil && typed == nil {
+                    HStack(spacing: Spacing.sm) {
+                        ProgressView().scaleEffect(0.7)
+                        Text(S.startFolderLooking).textStyle(.bodySmall, color: Brand.onSurfaceVariant)
+                    }
+                } else if (suggested ?? "").isEmpty && (typed ?? "").isEmpty {
+                    Text(S.startFolderUnknown).textStyle(.bodySmall, color: Brand.onSurfaceVariant)
+                }
+                if !others.isEmpty {
+                    Text(S.startFolderExists).textStyle(.bodySmall, color: ActionColors.negative)
+                    ForEach(Array(others.prefix(2)), id: \.self) { Text($0).textStyle(.bodySmall, color: ActionColors.negative).lineLimit(1) }
+                    if others.count > 2 { Text(S.startFolderMore(others.count - 2)).textStyle(.bodySmall, color: ActionColors.negative) }
+                }
+            }
+        } actions: {
+            TextPill(title: S.actionCancel, color: Brand.onSurfaceVariant) { ui.dismissDialog() }
+            FilledPill(title: S.actionStart, container: ActionColors.positive, content: ActionColors.onPositive, action: begin)
+        }
+        .task { suggested = await app.engine.suggestFolder(for: task.url) }
+    }
+
+    private func begin() {
+        let chosen = cleanFolderName(typed ?? suggested)
+        // The name gallery-dl suggested (or none) is not pinned: the link keeps following gallery-dl.
+        let pinned = chosen == cleanFolderName(suggested) ? nil : chosen
+        ui.dismissDialog()
+        app.engine.start(task.id, folderName: pinned)
+    }
+}
+
 /// The confirmation dialogs the Android app shows, in one place.
 @MainActor
 extension UIState {
@@ -15,7 +67,7 @@ extension UIState {
     }
 
     func confirmClearFinished(store: AppStore) {
-        present(ConfirmDialog(title: S.clearFinishedTitle, message: S.clearFinishedMessage, confirmLabel: S.actionClear) { store.clearFinished() })
+        present(ConfirmDialog(title: S.clearQueueTitle, message: S.clearQueueMessage, confirmLabel: S.actionClear) { store.hideFinishedFromQueue() })
     }
 
     func showFullLink(_ url: String) { present(FullLinkDialog(url: url)) }

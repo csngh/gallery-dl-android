@@ -56,6 +56,17 @@
     <string name="search_label">Search</string>
     <string name="action_back">Back</string>
     <string name="action_open">Open</string>
+    <string name="action_details">Details</string>
+    <string name="action_favorite">Add to Favorites</string>
+    <plurals name="favorites_added">
+        <item quantity="one">%d file added to Favorites</item>
+        <item quantity="other">%d files added to Favorites</item>
+    </plurals>
+    <string name="favorites_none_added">Already in Favorites</string>
+    <string name="details_source_link">Link you added</string>
+    <string name="details_file_address">This file\'s own address</string>
+    <string name="details_file_address_missing">Not saved: this file was downloaded before addresses were kept.</string>
+    <string name="details_file_address_note">Some sites give an address that stops working after a while.</string>
     <string name="action_open_with">Open in another app</string>
     <string name="action_play">Play</string>
     <string name="action_loop_on">Loop this video</string>
@@ -103,6 +114,9 @@
     <string name="action_ok">OK</string>
     <string name="action_columns">Columns</string>
     <string name="columns_option">%d columns</string>
+    <string name="action_view_options">Columns and order</string>
+    <string name="sort_newest">Newest first</string>
+    <string name="sort_oldest">Oldest first</string>
     <string name="selected_count">%d selected</string>
     <string name="delete_folder_title">Delete this folder?</string>
     <plurals name="delete_folder_message">
@@ -139,6 +153,8 @@
     <string name="confirm_question">Do you want to continue?</string>
     <string name="delete_item_title">Delete this file?</string>
     <string name="delete_item_message">This will permanently delete this file from your phone.</string>
+    <string name="clear_queue_title">Clear the finished links from the Queue?</string>
+    <string name="clear_queue_message">This only tidies the Queue. The links stay on Home, so you can refresh them again, and the downloaded files stay in your library.</string>
     <string name="clear_finished_title">Clear the finished links?</string>
     <string name="clear_finished_message">This will remove all finished links from the queue and from the activity history. The downloaded files will remain in your library.</string>
     <string name="action_clear">Clear</string>
@@ -247,7 +263,15 @@
 
     <string name="status_ready">Ready to start</string>
     <string name="action_start">Start</string>
+    <string name="start_folder_title">Folder for this link</string>
+    <string name="start_folder_message">The files are saved in this folder. Keep the name or type another one; the link then always saves there, also when you refresh it.</string>
+    <string name="start_folder_label">Folder name</string>
+    <string name="start_folder_looking">Looking up the folder name\u2026</string>
+    <string name="start_folder_unknown">The name could not be found in advance. Leave this empty to use the one gallery-dl gives, or type your own.</string>
+    <string name="start_folder_exists">A folder with this name already exists. It belongs to:</string>
+    <string name="start_folder_more">and %d more</string>
     <string name="action_start_all">Start all (%d)</string>
+    <string name="action_stop_all">Stop all (%d)</string>
     <string name="action_save">Save</string>
     <plurals name="site_ready">
         <item quantity="one">%d ready to start</item>

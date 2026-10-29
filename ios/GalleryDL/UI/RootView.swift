@@ -83,6 +83,22 @@ struct RootView: View {
             if result.check == .valid { app.store.enqueue(url: link, site: result.site) }
         }
         if defaults.string(forKey: "testURLs") != nil { app.engine.startAll() }
+        // `-testPendingURLs a,b` adds links without starting them; `-testStartDialog 1` asks for the folder of the first
+        // waiting link, and `-testStartPinned name` starts it in a folder of that name, as typing the name would.
+        for link in (defaults.string(forKey: "testPendingURLs") ?? "").split(separator: ",").map(String.init) {
+            let result = await app.validator.check(link)
+            if result.check == .valid { app.store.enqueue(url: link, site: result.site) }
+        }
+        if defaults.bool(forKey: "testStartDialog") || defaults.string(forKey: "testStartPinned") != nil {
+            tab = .home
+            if let waiting = app.store.tasks.last(where: { $0.status == .pending }) {
+                if let name = defaults.string(forKey: "testStartPinned") {
+                    app.engine.start(waiting.id, folderName: cleanFolderName(name))
+                } else {
+                    ui.present(StartFolderDialog(task: waiting))
+                }
+            }
+        }
         switch defaults.string(forKey: "testTab") {
         case "queue": tab = .queue
         case "library": tab = .library
@@ -90,6 +106,8 @@ struct RootView: View {
         default: break
         }
         if let directory = defaults.string(forKey: "testSeed"), app.store.items.isEmpty { seedLibrary(from: directory) }
+        // `-testFavorite 1` copies the newest file of the library into Favorites, as the star in the selection bar does.
+        if defaults.bool(forKey: "testFavorite"), let item = app.store.items.last { _ = app.store.addFavorites([item]) }
         if let name = defaults.string(forKey: "testDeleteFolder"), let folder = app.store.folders.first(where: { $0.name == name }) {
             app.store.deleteFolder(folder.id)
         }
@@ -118,6 +136,16 @@ struct RootView: View {
                 for task in app.store.tasks where task.status == .completed { app.engine.retry(task.id) }
             }
         }
+        // `-testClearQueueAfter 20` clears the finished links from the Queue after that many seconds, like the button.
+        if defaults.object(forKey: "testClearQueueAfter") != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + defaults.double(forKey: "testClearQueueAfter")) { app.store.hideFinishedFromQueue() }
+        }
+        // `-testDetails 1` opens the Details dialog of the newest file.
+        if defaults.bool(forKey: "testDetails"), let item = app.store.items.last { ui.present(ItemDetailsDialog(item: item)) }
+        // `-testStopAllAfter 8` presses "Stop all" after that many seconds.
+        if defaults.object(forKey: "testStopAllAfter") != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + defaults.double(forKey: "testStopAllAfter")) { app.engine.cancelAll() }
+        }
         // `-testExitAfterAdd 1` queues a link and ends the app right away, to check that the change was saved.
         if defaults.bool(forKey: "testExitAfterAdd") {
             app.store.enqueue(url: "http://127.0.0.1:8766/exit-test.png", site: "127.0.0.1")
@@ -133,6 +161,8 @@ struct RootView: View {
             if defaults.object(forKey: "testBackAfter") != nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + defaults.double(forKey: "testBackAfter")) { library.closeFolder() }
             }
+            // `-testSelectFirst 1` selects the first file, as a long press does, to check the selection bar.
+            if defaults.bool(forKey: "testSelectFirst"), let first = app.store.items(inFolder: folder.id, query: "").first { library.toggleSelected(first.id) }
             if defaults.bool(forKey: "testViewer") {
                 ui.viewer = ViewerRequest(folderId: folder.id, query: "", startIndex: defaults.integer(forKey: "testViewerIndex"))
             }

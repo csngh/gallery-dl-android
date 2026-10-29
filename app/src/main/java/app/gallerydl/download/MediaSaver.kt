@@ -46,14 +46,32 @@ class MediaSaver(private val context: Context) {
         return SavedMedia(doc.uri, doc.name ?: file.name, mime)
     }
 
-    private fun saveToMediaStore(file: File, subDir: String, mime: String): SavedMedia {
+    /** The MediaStore collection and top folder a file of this type is saved in. */
+    private fun collectionFor(mime: String): Pair<Uri, String> {
         val volume = MediaStore.VOLUME_EXTERNAL_PRIMARY
-        val (collection, root) = when {
+        return when {
             mime.startsWith("image/") -> MediaStore.Images.Media.getContentUri(volume) to Environment.DIRECTORY_PICTURES
             mime.startsWith("video/") -> MediaStore.Video.Media.getContentUri(volume) to Environment.DIRECTORY_MOVIES
             mime.startsWith("audio/") -> MediaStore.Audio.Media.getContentUri(volume) to Environment.DIRECTORY_MUSIC
             else -> MediaStore.Downloads.getContentUri(volume) to Environment.DIRECTORY_DOWNLOADS
         }
+    }
+
+    /**
+     * Moves a file this app saved in MediaStore into [folder], in place (its address stays the same). Files in a folder the
+     * user picked are not moved: that takes the folders' own addresses, so only their library entry changes.
+     */
+    fun moveToFolder(uri: Uri, mime: String, folder: String): Boolean {
+        if (uri.authority != MediaStore.AUTHORITY) return false
+        val (_, root) = collectionFor(mime)
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.RELATIVE_PATH, listOf(root, APP_DIR, folder).joinToString("/"))
+        }
+        return runCatching { context.contentResolver.update(uri, values, null, null) > 0 }.getOrDefault(false)
+    }
+
+    private fun saveToMediaStore(file: File, subDir: String, mime: String): SavedMedia {
+        val (collection, root) = collectionFor(mime)
         val relativePath = listOf(root, APP_DIR, subDir).filter { it.isNotEmpty() }.joinToString("/")
 
         val resolver = context.contentResolver
@@ -84,14 +102,20 @@ class MediaSaver(private val context: Context) {
     }
 }
 
-/** Short, readable name for a link folder: the last path segment, e.g. "AbC123" or "My Photo". */
-fun linkDisplayName(url: String?, fallback: String): String {
-    val uri = url?.let { Uri.parse(it) } ?: return fallback
-    val segment = uri.lastPathSegment ?: uri.host.orEmpty().removePrefix("www.")
-    val extension = segment.substringAfterLast('.', "")
-    val withoutExtension = if (extension.length in 2..4) segment.substringBeforeLast('.') else segment
-    return withoutExtension.replace('_', ' ').trim().ifEmpty { fallback }
-}
+/** The library folder of saved favourites. Its files are copies kept inside the app, so they outlive the link they came from. */
+const val FAVORITES_FOLDER = "Favorites"
+
+private const val FAVORITE_PREFIX = "favorite:"
+
+fun isFavoritesFolder(name: String) = name.equals(FAVORITES_FOLDER, ignoreCase = true)
+
+/** A favourite remembers the link it came from, marked so a refresh of that link never mistakes the copy for its own file. */
+fun favoriteSource(sourceUrl: String) = FAVORITE_PREFIX + sourceUrl
+
+fun originalSource(sourceUrl: String) = sourceUrl.removePrefix(FAVORITE_PREFIX)
+
+/** A downloaded file never goes into the favourites folder, even when gallery-dl or the user names its folder that. */
+fun downloadFolder(name: String) = if (isFavoritesFolder(name)) "$name (link)" else name
 
 /** The title a folder shows: its tag when the user gave it one (the name moves to the line below), its name otherwise. */
 fun folderTitle(displayName: String, tag: String?): String =
@@ -100,6 +124,10 @@ fun folderTitle(displayName: String, tag: String?): String =
 /** The folder's own name, shown beside the item count while its tag is the title; null when the name is the title. */
 fun folderSubtitle(displayName: String, tag: String?): String? =
     if (tag.isNullOrBlank()) null else displayName
+
+/** A folder name typed by the user, made safe to use as a folder: no path or reserved characters; null when nothing is left. */
+fun cleanFolderName(raw: String?): String? =
+    raw?.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001F]+"), "_")?.trim()?.trim('.')?.take(120)?.trim()?.takeIf { it.isNotEmpty() }
 
 /** Folder name for one link: host plus the last two path segments, e.g. "imgur.com_a_AbC123". */
 fun linkFolderName(url: String): String {

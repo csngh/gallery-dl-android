@@ -46,16 +46,17 @@ struct LibraryScreen: View {
     @ObservedObject var model: LibraryViewModel
 
     var body: some View {
-        Group {
+        // The folder list stays in place underneath an open folder, so coming back lands where you left off instead of at the
+        // top. Its previews are paused while a folder is open.
+        ZStack {
+            FoldersContent(model: model).environment(\.previewsDisabled, model.openFolder != nil)
             if let folder = model.openFolder {
-                // Swipe from the left edge to go back to the folders, which slide in underneath.
+                // Swipe from the left edge to go back to the folders, which show underneath.
                 SwipeBackContainer(enabled: model.selection.isEmpty, onBack: { model.closeFolder() }, behind: {
-                    FoldersContent(model: model).environment(\.previewsDisabled, true).appBackground()
+                    Color.clear
                 }, top: {
                     FolderContent(model: model, folder: folder).appBackground()
                 })
-            } else {
-                FoldersContent(model: model)
             }
         }
         // The preview clips of the whole library are made in the background while it is open, and the bar shows how far
@@ -165,7 +166,7 @@ private struct FoldersContent: View {
     @ObservedObject var model: LibraryViewModel
 
     var body: some View {
-        let folders = store.folderSummaries(query: model.query)
+        let folders = store.folderSummaries(query: model.query, newestFirst: settings.libraryNewestFirst)
         let videosByFolder = Dictionary(grouping: store.items.filter { $0.isVideo && $0.folderId != nil }, by: { $0.folderId! })
         VStack(spacing: 0) {
             TopBar(title: S.navLibrary) { listColumnsMenu }
@@ -194,7 +195,7 @@ private struct FoldersContent: View {
         }
     }
 
-    /// The grid button in the Library's top bar: choose how many columns the folders are shown in (2 or 3).
+    /// The grid button in the Library's top bar: choose how many columns the folders are shown in (2 or 3), and their date order.
     private var listColumnsMenu: some View {
         Menu {
             ForEach(2...3, id: \.self) { count in
@@ -206,6 +207,16 @@ private struct FoldersContent: View {
                     }
                 }
             }
+            Divider()
+            ForEach([true, false], id: \.self) { newest in
+                Button { settings.libraryNewestFirst = newest } label: {
+                    if newest == settings.libraryNewestFirst {
+                        Label(newest ? S.sortNewest : S.sortOldest, systemImage: "checkmark")
+                    } else {
+                        Text(newest ? S.sortNewest : S.sortOldest)
+                    }
+                }
+            }
         } label: {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 20, weight: .medium))
@@ -213,7 +224,7 @@ private struct FoldersContent: View {
                 .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
         }
-        .accessibilityLabel(S.actionColumns)
+        .accessibilityLabel(S.actionViewOptions)
     }
 
     /// What long-pressing a folder offers: give it a tag, or delete it.
@@ -294,7 +305,7 @@ private struct FolderContent: View {
     let folder: OpenFolder
 
     var body: some View {
-        let items = store.items(inFolder: folder.id, query: model.itemQuery)
+        let items = store.items(inFolder: folder.id, query: model.itemQuery, newestFirst: settings.folderNewestFirst)
         let selecting = !model.selection.isEmpty
         let tag = store.folders.first { $0.id == folder.id }?.tag
         VStack(spacing: 0) {
@@ -307,6 +318,19 @@ private struct FolderContent: View {
                 },
                 trailing: {
                     if selecting {
+                        // Details is about one file, so the i appears only while exactly one is selected.
+                        if model.selection.count == 1, let item = items.first(where: { model.selection.contains($0.id) }) {
+                            IconButton(symbol: "info.circle", color: Brand.onSurfaceVariant, label: S.actionDetails) { ui.present(ItemDetailsDialog(item: item)) }
+                        }
+                        // The files in Favorites are already copies kept in the app, so there is nothing to add them to.
+                        if !isFavoritesFolder(folder.name) {
+                            IconButton(symbol: "star", color: Brand.onSurfaceVariant, label: S.actionFavorite) {
+                                let chosen = items.filter { model.selection.contains($0.id) }
+                                model.clearSelection()
+                                let added = store.addFavorites(chosen)
+                                ui.present(FavoritesAddedDialog(added: added))
+                            }
+                        }
                         IconButton(symbol: "trash", color: ActionColors.negative, label: S.actionDelete) { confirmDeleteSelected() }
                     } else {
                         IconButton(symbol: "tag", color: Brand.onSurfaceVariant, label: S.actionTagFolder) {
@@ -341,7 +365,7 @@ private struct FolderContent: View {
         }
     }
 
-    /// The grid button in a folder's top bar: choose how many columns the files are shown in (2 to 4).
+    /// The grid button in a folder's top bar: choose how many columns the files are shown in (2 to 4), and their date order.
     private var columnsMenu: some View {
         Menu {
             ForEach(2...4, id: \.self) { count in
@@ -353,6 +377,16 @@ private struct FolderContent: View {
                     }
                 }
             }
+            Divider()
+            ForEach([true, false], id: \.self) { newest in
+                Button { settings.folderNewestFirst = newest } label: {
+                    if newest == settings.folderNewestFirst {
+                        Label(newest ? S.sortNewest : S.sortOldest, systemImage: "checkmark")
+                    } else {
+                        Text(newest ? S.sortNewest : S.sortOldest)
+                    }
+                }
+            }
         } label: {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 20, weight: .medium))
@@ -360,7 +394,7 @@ private struct FolderContent: View {
                 .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
         }
-        .accessibilityLabel(S.actionColumns)
+        .accessibilityLabel(S.actionViewOptions)
     }
 
     private func confirmDeleteSelected() {
@@ -420,6 +454,7 @@ private struct ThumbnailCell: View {
 struct ViewerOverlay: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var ui: UIState
+    @EnvironmentObject private var settings: SettingsStore
     let request: ViewerRequest
     @State private var page: Int
 
@@ -435,7 +470,7 @@ struct ViewerOverlay: View {
     @State private var locked = false
 
     var body: some View {
-        let items = store.items(inFolder: request.folderId, query: request.query)
+        let items = store.items(inFolder: request.folderId, query: request.query, newestFirst: settings.folderNewestFirst)
         // Swipe from the left edge to close (only on the first file, so it never fights the paging between files).
         // The edge swipe is only for pictures: dragging a playing video across the screen made it lag, and a video
         // already has its own sideways swipe (scrubbing).
@@ -501,6 +536,7 @@ struct ViewerOverlay: View {
             Spacer(minLength: 0)
             // Open and Delete share one menu: deleting a file is not a one-tap icon beside a harmless one.
             Menu {
+                Button { ui.present(ItemDetailsDialog(item: current)) } label: { Label(S.actionDetails, systemImage: "info.circle") }
                 Button { ShareSheet.present(current.fileURL) } label: { Label(S.actionOpenWith, systemImage: "arrow.up.right.square") }
                 Button(role: .destructive) {
                     ui.present(ConfirmDialog(
@@ -561,5 +597,23 @@ enum ShareSheet {
               var top = scene.windows.first(where: \.isKeyWindow)?.rootViewController else { return }
         while let presented = top.presentedViewController { top = presented }
         top.present(UIActivityViewController(activityItems: [url], applicationActivities: nil), animated: true)
+    }
+}
+
+/// Says how many files went into Favorites, and closes itself.
+struct FavoritesAddedDialog: View {
+    @EnvironmentObject private var ui: UIState
+    let added: Int
+
+    var body: some View {
+        DialogCard(title: added > 0 ? S.favoritesAdded(added) : S.favoritesNoneAdded) {
+            EmptyView()
+        } actions: {
+            TextPill(title: S.actionClose, color: Brand.onSurfaceVariant) { ui.dismissDialog() }
+        }
+        .task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            ui.dismissDialog()
+        }
     }
 }

@@ -88,6 +88,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.unit.Dp
 import app.gallerydl.ui.components.StartButton
 import app.gallerydl.ui.components.StartAllButton
+import app.gallerydl.ui.components.StopAllButton
 import app.gallerydl.ui.queue.statusLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,6 +102,8 @@ fun HomeScreen(
     val edit by viewModel.edit.collectAsStateWithLifecycle()
     var pending by remember { mutableStateOf<PendingAction?>(null) }
     var fullLink by remember { mutableStateOf<String?>(null) }
+    val folderNames by viewModel.folderNames.collectAsStateWithLifecycle()
+    var folderAsk by remember { mutableStateOf<app.gallerydl.data.DownloadTask?>(null) }
 
     val loaded = groups
     val context = LocalContext.current
@@ -144,6 +147,11 @@ fun HomeScreen(
             modifier = Modifier.padding(horizontal = Spacing.Md, vertical = Spacing.Sm),
         )
 
+        StopAllButton(
+            count = loaded?.sumOf { it.inProgress } ?: 0,
+            onClick = viewModel::stopAll,
+            modifier = Modifier.padding(horizontal = Spacing.Md),
+        )
         StartAllButton(
             count = loaded?.sumOf { it.ready } ?: 0,
             onClick = viewModel::startAll,
@@ -164,6 +172,7 @@ fun HomeScreen(
                 items(loaded, key = { it.site }) { group ->
                     SiteGroupCard(
                         group = group,
+                        folderNames = folderNames,
                         onCancel = { task ->
                             // A running download is confirmed first; a queued one can simply be retried later.
                             if (task.status == TaskStatus.DOWNLOADING) {
@@ -175,7 +184,7 @@ fun HomeScreen(
                         onRetry = { viewModel.retry(it.id) },
                         onRemove = { pending = PendingAction.Remove(it.id) },
                         onEdit = viewModel::startEdit,
-                        onStart = { viewModel.start(it.id) },
+                        onStart = { folderAsk = it },
                         onViewLink = { fullLink = it.url },
                     )
                 }
@@ -184,6 +193,17 @@ fun HomeScreen(
     }
 
     fullLink?.let { url -> FullLinkDialog(url = url, onDismiss = { fullLink = null }) }
+    folderAsk?.let { task ->
+        app.gallerydl.ui.components.StartFolderDialog(
+            task = task,
+            choice = viewModel.folderChoice,
+            onStart = { name ->
+                viewModel.start(task.id, name)
+                folderAsk = null
+            },
+            onDismiss = { folderAsk = null },
+        )
+    }
 
     transfer?.let { TransferDialog(it, onDismiss = viewModel::dismissTransfer) }
 
@@ -208,6 +228,7 @@ fun HomeScreen(
 @Composable
 private fun SiteGroupCard(
     group: SiteGroup,
+    folderNames: Map<String, String>,
     onCancel: (DownloadTask) -> Unit,
     onRetry: (DownloadTask) -> Unit,
     onRemove: (DownloadTask) -> Unit,
@@ -246,7 +267,7 @@ private fun SiteGroupCard(
                 Column(Modifier.padding(top = Spacing.Sm)) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     group.tasks.forEach { task ->
-                        SiteLinkRow(task, { onCancel(task) }, { onRetry(task) }, { onRemove(task) }, { onEdit(task) }, { onViewLink(task) }, { onStart(task) })
+                        SiteLinkRow(task, task.folderName ?: folderNames[task.url], { onCancel(task) }, { onRetry(task) }, { onRemove(task) }, { onEdit(task) }, { onViewLink(task) }, { onStart(task) })
                     }
                 }
             }
@@ -287,6 +308,8 @@ private fun GroupSummary(group: SiteGroup) {
 @Composable
 private fun SiteLinkRow(
     task: DownloadTask,
+    /** The library folder this link saves in; shown as the main text, with the link below it. */
+    folderName: String?,
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onRemove: () -> Unit,
@@ -307,13 +330,26 @@ private fun SiteLinkRow(
     ) {
         IconTile(icon, tone, Modifier.padding(end = Spacing.Md), size = TileSize.Small)
         Column(Modifier.weight(1f)) {
+            val link = task.url.removePrefix("https://").removePrefix("http://")
+            // The folder's name tells which folder the menu on this row acts on; the link sits below it. Until a link has a
+            // folder, the link is the main text.
             Text(
-                task.url.removePrefix("https://").removePrefix("http://"),
+                folderName ?: link,
                 modifier = Modifier.clickable(onClick = onViewLink),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (folderName != null) {
+                Text(
+                    link,
+                    modifier = Modifier.clickable(onClick = onViewLink),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(status, style = MaterialTheme.typography.labelMedium, color = tone.icon)
             if (task.status == TaskStatus.PENDING) StartButton(onClick = onStart, modifier = Modifier.padding(top = Spacing.Xs))
         }

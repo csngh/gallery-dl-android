@@ -1,5 +1,5 @@
 # Pure-Python only: iOS cannot load macOS wheels. setup.sh fails if a package has no pure-Python wheel.
-gallery-dl==1.28.5
+gallery-dl==1.32.18
 requests
 charset_normalizer
 certifi

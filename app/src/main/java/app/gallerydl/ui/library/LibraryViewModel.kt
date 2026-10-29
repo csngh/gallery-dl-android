@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import app.gallerydl.data.FolderSummary
 import app.gallerydl.data.LibraryItem
 import app.gallerydl.data.LibraryRepository
+import app.gallerydl.download.isFavoritesFolder
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -35,11 +37,23 @@ class LibraryViewModel(
     val folderColumns: StateFlow<Int>,
     /** How many columns the folder list uses: 2 or 3. */
     val libraryColumns: StateFlow<Int>,
+    /** Whether the folder list shows the newest folder first. */
+    val libraryNewestFirst: StateFlow<Boolean>,
+    /** Whether the files inside a folder show the newest first. */
+    val folderNewestFirst: StateFlow<Boolean>,
     private val settings: app.gallerydl.data.SettingsRepository,
 ) : ViewModel() {
 
     fun setLibraryColumns(count: Int) {
         viewModelScope.launch { settings.setLibraryColumns(count) }
+    }
+
+    fun setLibraryNewestFirst(newestFirst: Boolean) {
+        viewModelScope.launch { settings.setLibraryNewestFirst(newestFirst) }
+    }
+
+    fun setFolderNewestFirst(newestFirst: Boolean) {
+        viewModelScope.launch { settings.setFolderNewestFirst(newestFirst) }
     }
 
     fun setFolderColumns(count: Int) {
@@ -63,6 +77,10 @@ class LibraryViewModel(
     /** null while the first query is loading. */
     val folders: StateFlow<List<FolderSummary>?> = debouncedQuery
         .flatMapLatest { library.observeFolders(it.trim()) }
+        // The database lists the most recently updated folder first.
+        .combine(libraryNewestFirst) { list, newestFirst -> if (newestFirst) list else list.asReversed() }
+        // Favorites stays at the top, whatever the date order.
+        .map { list -> list.sortedBy { if (isFavoritesFolder(it.name)) 0 else 1 } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** The videos of every folder, for the live previews on the folder covers. */
@@ -77,6 +95,8 @@ class LibraryViewModel(
                 flowOf(emptyList())
             } else {
                 debouncedItemQuery.flatMapLatest { library.observeItems(folder.id, it.trim()) }
+                    // The database lists the newest file first.
+                    .combine(folderNewestFirst) { list, newestFirst -> if (newestFirst) list else list.asReversed() }
             }
         }
         .onEach { list ->
@@ -122,6 +142,14 @@ class LibraryViewModel(
         val ids = _selection.value
         _selection.value = emptySet()
         viewModelScope.launch { library.deleteItems(ids) }
+    }
+
+    /** Copies the selected files into Favorites and leaves selection mode; [onDone] gets how many were added. */
+    fun addSelectedToFavorites(onDone: (Int) -> Unit) {
+        val ids = _selection.value
+        val chosen = items.value.orEmpty().filter { it.id in ids }
+        _selection.value = emptySet()
+        viewModelScope.launch { onDone(library.addFavorites(chosen)) }
     }
 
     fun deleteItem(id: Long) = viewModelScope.launch { library.deleteItems(listOf(id)) }

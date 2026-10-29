@@ -42,13 +42,16 @@ class AppContainer(context: Context) {
     val startupSound: StateFlow<Boolean> = settingsRepository.startupSound.stateIn(appScope, SharingStarted.Eagerly, true)
     val folderColumns: StateFlow<Int> = settingsRepository.folderColumns.stateIn(appScope, SharingStarted.Eagerly, 3)
     val libraryColumns: StateFlow<Int> = settingsRepository.libraryColumns.stateIn(appScope, SharingStarted.Eagerly, 2)
+    val libraryNewestFirst: StateFlow<Boolean> = settingsRepository.libraryNewestFirst.stateIn(appScope, SharingStarted.Eagerly, true)
+    val folderNewestFirst: StateFlow<Boolean> = settingsRepository.folderNewestFirst.stateIn(appScope, SharingStarted.Eagerly, true)
     val livePreviews: StateFlow<Boolean> = settingsRepository.livePreviews.stateIn(appScope, SharingStarted.Eagerly, true)
     val cookiesCount: StateFlow<Int> = settingsRepository.cookiesCount.stateIn(appScope, SharingStarted.Eagerly, 0)
     val urlValidator = UrlValidator(pythonBridge)
+    val folderChoice = app.gallerydl.download.FolderChoice(pythonBridge, settingsRepository, database.taskDao(), database.libraryDao())
     val storageMonitor = app.gallerydl.data.StorageMonitor(context)
     val thumbnailCache = app.gallerydl.data.ThumbnailCache(context)
     val previewStripCache = app.gallerydl.data.PreviewStripCache(context)
-    val libraryRepository = LibraryRepository(database.libraryDao(), context.contentResolver, thumbnailCache, previewStripCache)
+    val libraryRepository = LibraryRepository(database.libraryDao(), context.contentResolver, thumbnailCache, previewStripCache, File(context.filesDir, "favorites"))
     val downloadRepository =
         DownloadRepository(
             database.taskDao(),

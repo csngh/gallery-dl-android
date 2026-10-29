@@ -180,6 +180,7 @@ final class PreviewStripStore {
     private static let imageContext = CIContext()
 
     private func make(_ item: LibraryItem) -> Bool {
+        if item.isWebM { return makeWebM(item) }
         let asset = AVURLAsset(url: item.fileURL)
         let duration = asset.duration.seconds
         guard duration.isFinite, duration > 0.2, let track = asset.tracks(withMediaType: .video).first else { return false }
@@ -217,7 +218,30 @@ final class PreviewStripStore {
             if let jpeg = Self.imageContext.jpegRepresentation(of: image, colorSpace: colorSpace, options: quality) { jpegs.append(jpeg) }
         }
         guard jpegs.count >= max(4, count / 2) else { return false }
+        return save(jpegs, fps: fps, for: item)
+    }
 
+    /// The same strip for a WebM video, with frames from the app's own decoder instead of the system's.
+    private func makeWebM(_ item: LibraryItem) -> Bool {
+        guard let file = WebMFile(url: item.fileURL) else { return false }
+        let duration = file.duration
+        let packets = file.videoCount
+        guard duration > 0.2, packets >= 2 else { return false }
+        let first = file.video(0), last = file.video(packets - 1)
+        guard last.time > first.time else { return false }
+        let sourceFPS = Double(packets - 1) / (last.time - first.time)
+        let fps = sourceFPS >= 8 ? min(Self.maxFPS, sourceFPS.rounded()) : Self.maxFPS
+        let count = min(Int(Self.windowSeconds * fps), max(6, Int(duration * fps)))
+        let span = Double(count) / fps
+        let latestStart = max(0, duration - span - 0.15)
+        let start = latestStart > 0.3 ? Double.random(in: 0.15...latestStart) : 0
+        let images = WebMFrames.images(of: item.fileURL, from: start, count: count, fps: fps, edge: edge)
+        let jpegs = images.compactMap { UIImage(cgImage: $0).jpegData(compressionQuality: 0.72) }
+        guard jpegs.count >= max(4, count / 2) else { return false }
+        return save(jpegs, fps: fps, for: item)
+    }
+
+    private func save(_ jpegs: [Data], fps: Double, for item: LibraryItem) -> Bool {
         var out = Data("GDLS".utf8)
         out.append(contentsOf: [1, UInt8(fps), UInt8(jpegs.count & 0xFF), UInt8(jpegs.count >> 8)])
         var position = UInt32(8 + (jpegs.count + 1) * 4)

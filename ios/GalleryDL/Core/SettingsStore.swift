@@ -9,6 +9,10 @@ final class SettingsStore: ObservableObject {
     @Published var folderColumns: Int { didSet { defaults.set(folderColumns, forKey: Keys.columns) } }
     /// How many columns the folder list of the library uses: 2 or 3. Two by default.
     @Published var libraryColumns: Int { didSet { defaults.set(libraryColumns, forKey: Keys.libraryColumns) } }
+    /// The folder list of the library by date: newest first (the default) or oldest first.
+    @Published var libraryNewestFirst: Bool { didSet { defaults.set(libraryNewestFirst, forKey: Keys.libraryNewestFirst) } }
+    /// The files inside a library folder by date: newest first (the default) or oldest first.
+    @Published var folderNewestFirst: Bool { didSet { defaults.set(folderNewestFirst, forKey: Keys.folderNewestFirst) } }
     /// Silent looping previews of the videos in the library. On by default.
     @Published var livePreviews: Bool { didSet { defaults.set(livePreviews, forKey: Keys.previews) } }
     /// How many cookies the imported cookies.txt holds; 0 when none is imported.
@@ -17,7 +21,7 @@ final class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private enum Keys {
-        static let options = "gdl.options", sound = "startupSound", previews = "livePreviews", columns = "folderColumns", libraryColumns = "libraryColumns", cookies = "gdl.cookiesCount"
+        static let options = "gdl.options", sound = "startupSound", previews = "livePreviews", columns = "folderColumns", libraryColumns = "libraryColumns", libraryNewestFirst = "libraryNewestFirst", folderNewestFirst = "folderNewestFirst", cookies = "gdl.cookiesCount"
     }
 
     init() {
@@ -31,6 +35,8 @@ final class SettingsStore: ObservableObject {
         startupSound = defaults.object(forKey: Keys.sound) == nil ? true : defaults.bool(forKey: Keys.sound)
         livePreviews = defaults.object(forKey: Keys.previews) == nil ? true : defaults.bool(forKey: Keys.previews)
         libraryColumns = defaults.object(forKey: Keys.libraryColumns) == nil ? 2 : min(max(defaults.integer(forKey: Keys.libraryColumns), 2), 3)
+        libraryNewestFirst = defaults.object(forKey: Keys.libraryNewestFirst) == nil ? true : defaults.bool(forKey: Keys.libraryNewestFirst)
+        folderNewestFirst = defaults.object(forKey: Keys.folderNewestFirst) == nil ? true : defaults.bool(forKey: Keys.folderNewestFirst)
         folderColumns = defaults.object(forKey: Keys.columns) == nil ? 3 : min(max(defaults.integer(forKey: Keys.columns), 2), 4)
         cookiesCount = defaults.integer(forKey: Keys.cookies)
     }

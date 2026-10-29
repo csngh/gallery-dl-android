@@ -10,7 +10,7 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 ![Android TV](https://img.shields.io/badge/Android%20TV-supported-4285F4?logo=googletv&logoColor=white)
 ![iOS 15+](https://img.shields.io/badge/iOS-15%2B-000000?logo=apple&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white)
-![gallery-dl](https://img.shields.io/badge/gallery--dl-1.28.5-blue)
+![gallery-dl](https://img.shields.io/badge/gallery--dl-1.32.18-blue)
 ![Theme](https://img.shields.io/badge/theme-dark-0A0F1F)
 
 </div>
@@ -42,10 +42,20 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 
 - **One link at a time.** Paste a link (or share one from a browser); it is checked against gallery-dl's supported
   sites and added. Nothing downloads until you press **Start** (or **Start all**), and one link downloads at a time.
+- **Stop all.** A red **Stop all** button on Home and Queue appears while anything is downloading or waiting. One tap cancels the
+  running download and every waiting link. Each link keeps its record of what was saved, so a retry only fetches the rest.
 - **Live progress.** Overall percent when the site reports an album size, otherwise per-file percent, in the app and in
   a notification with a Cancel button.
 - **A folder per link.** Saved to shared storage (Pictures / Movies / Music / Downloads under `GalleryDl/`, no storage
   permission needed) or to a folder you pick.
+- **Where a file came from.** In the viewer, the ⋮ menu has **Details**: the link you added and that file's own direct address,
+  each with a Copy button. In a folder, long-press a file and an **i** button next to Delete shows the same details. Renewing a link updates the address of every file it covers, including files it already had.
+  Files downloaded before this was added show "Not saved" until the link is renewed.
+- **No second copies.** Files the library already has for a link are never fetched or saved again, even if you removed the link
+  and added it again (which deletes its "already downloaded" record). The existing file just gets the link's new download.
+- **Home keeps your links.** Home is the collection of links you have downloaded, not a history. "Clear finished" on the Queue only
+  tidies the Queue: the links stay on Home (and in Activity), with their memory of what was saved, so Renew only fetches
+  what is new. Settings > Clear history is the one that really deletes them.
 - **Renew.** The refresh button on Home runs every link again to pick up new files, and starts links that were only
   added. Files you already have are skipped.
 - **Check for new files / Retry.** A finished link can be run again from its menu (or in Activity); a retry only
@@ -61,7 +71,11 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 
 ### Library
 
-- **One folder per link**, with search of file names (currently hidden), multi-select delete, and **folder tags**
+- **Folders named by gallery-dl.** Each file goes in a folder with exactly the name of the innermost folder gallery-dl
+  made for it (a thread's own folder, say), without its parents; direct file links all land in gallery-dl's `directlink`
+  folder. A file saved earlier under an older folder name moves into the folder gallery-dl names now the next time its link
+  is refreshed (Renew, or adding the link again): nothing is downloaded again (a file counts as already saved by its name or by its direct address, so names with a shifting position number still match), and an emptied old folder is removed, its tag
+  passing to the new one. Also search of file names (currently hidden), multi-select delete, and **folder tags**
   (long-press a folder, or use the tag button inside it): the tag becomes the folder's title and its own name moves to the line below it.
 - **Live previews.** Every video plays a silent, looping preview, and folder covers cycle through clips from random
   videos in their folder. A preview is a random 3 second window of the video, saved once at the video's own frame rate
@@ -71,6 +85,10 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
   clips for every video that lacks one, with a "Preparing previews" bar. Thumbnails, previews and website icons are
   kept on the device until the video is deleted or you clear them.
 - **Columns.** 2, 3 or 4 columns inside a folder.
+- **Folder for a link.** Pressing Start on a waiting link asks which library folder its files go in. The name gallery-dl would use is looked up and filled in; keep it, or type another and that link always saves there, also on every refresh. A name another link already uses gets a warning (it can still be chosen). Start all and Renew do not ask. On Home, each link shows its folder's name as the main text with the link underneath.
+- **Files saved.** The count on a link is what the library holds for it, recalculated whenever the link is refreshed.
+- **Favorites.** Long-press a file in a folder, then tap the star to copy it into a Favorites folder (pinned first in the Library). The copy is kept inside the app (on Android in the app's private storage, not in your Pictures or Movies), keeps the link and the file's own address (see Details), and stays when the link or its folder is deleted. It goes only when you delete it from Favorites.
+- **Folder order.** The folder list can show the newest folder first (the default) or the oldest first, from the grid button in the Library's top bar. The choice is remembered. Inside a folder the files have the same choice, and the full-screen viewer follows it.
 - **Built-in video player.** Videos and audio play inside the app (Media3 ExoPlayer): swipe sideways to scrub with a
   live picture and a "+0:12" pill, a seek bar that previews as you drag, playback speed 0.5x to 2x (remembered), pinch or
   double-tap to zoom and drag to pan, tap to hide the controls, a loop button (repeat the video), a lock button (ignores every touch until you unlock it), back and forward 10 seconds, and a rotate-to-landscape button on phones. Formats the phone cannot play fall back to opening
@@ -102,12 +120,12 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 | Background work | WorkManager (download queue and preview job, both as foreground services) |
 | Images | Coil 3 |
 | Video and audio | Media3 ExoPlayer |
-| Downloader | Chaquopy running gallery-dl 1.28.5 (Python 3.12; 3.11 in the TV build) |
+| Downloader | Chaquopy running gallery-dl 1.32.18 (Python 3.12; 3.11 in the TV build) |
 | DI | Manual (`AppContainer`) |
 
 ```
 app/src/main/
-  python/gdl_bridge.py     gallery-dl wrapper: progress, failure counts, per-link archive
+  python/gdl_bridge.py     gallery-dl wrapper: progress, failure counts, skipping files the library already has
   java/app/gallerydl/
     data/                  Room entities, DAOs, migrations, repositories, settings, thumbnail and preview caches
     download/              Python bridge, download and preview workers, notifications, MediaStore/SAF saving
@@ -180,7 +198,7 @@ that file and Swift. iOS 15 or newer.
 
 ```sh
 brew install xcodegen
-ios/scripts/setup.sh        # downloads Python.xcframework, installs gallery-dl, generates GalleryDL.xcodeproj
+ios/scripts/setup.sh        # downloads Python.xcframework, installs gallery-dl, builds the WebM decoder, generates GalleryDL.xcodeproj
 open ios/GalleryDL.xcodeproj
 ```
 
@@ -221,6 +239,8 @@ WorkManager by `Core/DownloadEngine.swift`.
 | `ios/GalleryDL/PythonShim.m`, `PythonRuntime.swift` | Embedded Python |
 | `ios/python/gdl_ios.py` | JSON entry points: `check`, `download`, `poll`, `cancel` |
 | `ios/scripts/embed_python.sh` | Build phase: copies stdlib and packages into the bundle, turns `.so` files into frameworks |
+| `ios/GalleryDL/Core/WebM/` | WebM playback: file reader, libvpx decoder, Opus sound, player (see "WebM on iOS") |
+| `ios/scripts/build_webm.sh` | Builds libvpx for device and simulator into `ios/Vendor/Vpx.xcframework` (run by `setup.sh`) |
 | `ios/scripts/make_ipa.sh` | Builds an unsigned `.ipa` for AltStore / AltServer |
 | `ios/requirements.txt` | Pure-Python packages only (iOS cannot load macOS binaries) |
 
@@ -256,6 +276,19 @@ paging between files is off on a video page. Dragging the scrubber shows the pic
 time bubble as the swipe. The left-edge back swipe is off on video and audio pages (moving a playing video across the
 screen made it lag); use the back button or swipe down. Speed menu 0.5x to 2x, play and pause. Tap to hide or show the
 controls. The Android player behaves the same way.
+
+### WebM on iOS
+
+iOS cannot play WebM (the system player has no VP8 or VP9 decoder), so the app decodes it itself, and the original file
+is never converted or changed. `Core/WebM/WebMFile.swift` reads the Matroska structure straight from the mapped file and
+indexes every frame. `WebMDecoder.swift` decodes VP8 and VP9 with libvpx (BSD licence, built by `scripts/build_webm.sh`
+from a pinned release into `ios/Vendor/`, which is not committed) and hands out pictures. `WebMPlayer.swift` shows them
+on an `AVSampleBufferDisplayLayer` driven by a render synchronizer, so play, pause, speed and seeking use the system clock.
+The same decoder makes the library thumbnail and the live preview strip, so a `.webm` tile looks like any other.
+Opus sound is decoded with the decoder built into iOS (`WebMAudio.swift`). A file whose first picture comes late (or that starts on a non-key frame, as clips cut from a longer video can) shows its first
+usable picture from the start instead of an empty screen; without sound the timeline begins at that picture. Limits: Vorbis sound (older WebM files) is not
+decoded, so those videos play without sound; only mono and stereo Opus; 8-bit 4:2:0 video only (no VP9 10-bit or 4:4:4);
+decoding is in software, so 4K video may stutter on older phones.
 
 ### Differences from Android
 

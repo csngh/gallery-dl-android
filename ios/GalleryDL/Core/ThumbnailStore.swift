@@ -100,6 +100,10 @@ final class ThumbnailStore {
     }
 
     private func videoFrame(_ item: LibraryItem) -> CGImage? {
+        if item.isWebM {
+            // The system cannot open WebM, so the app's own decoder makes the picture, a little way in like below.
+            return WebMFrames.image(of: item.fileURL, near: 1.0, edge: edge)
+        }
         let asset = AVURLAsset(url: item.fileURL)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
