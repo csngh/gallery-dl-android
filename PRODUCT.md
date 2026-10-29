@@ -42,7 +42,7 @@ The name is "Gallery DL Android". A logo lockup and master mark exist in `docs/b
 ## Evidence on Hand
 
 - The logo files in `docs/brand/` and the app icon and splash assets.
-- Five README screenshots in `docs/screenshots/`. They show procedural abstract art, not real downloaded content; do not present them as real user content.
+- README screenshots in `docs/screenshots/` (nine from Android, four from iPhone). They show generated abstract art and placeholder `.example` links, not real downloaded content; do not present them as real user content.
 - No testimonials, users, benchmarks or download counts exist. Do not invent any.
 
 ## Product Principles

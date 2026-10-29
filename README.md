@@ -2,9 +2,10 @@
 
 <img src="docs/brand/logo-lockup.png" alt="Gallery DL Android" width="560">
 
-**A native Android (and iPhone) front end and download manager for [gallery-dl](https://github.com/mikf/gallery-dl).**
+### A native Android and iPhone front end and download manager for [gallery-dl](https://github.com/mikf/gallery-dl)
 
-gallery-dl runs *inside the app* (embedded Python), so there is no server and no backend.
+gallery-dl runs *inside the app* (embedded Python), so there is no server, no backend and no account.<br>
+Paste a link, press **Start**, and it becomes a folder you can browse and play, with live video previews.
 
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)
 ![Android TV](https://img.shields.io/badge/Android%20TV-supported-4285F4?logo=googletv&logoColor=white)
@@ -13,28 +14,87 @@ gallery-dl runs *inside the app* (embedded Python), so there is no server and no
 ![gallery-dl](https://img.shields.io/badge/gallery--dl-1.32.18-blue)
 ![Theme](https://img.shields.io/badge/theme-dark-0A0F1F)
 
+[Highlights](#highlights) &nbsp;·&nbsp; [Screenshots](#screenshots) &nbsp;·&nbsp; [Features](#features) &nbsp;·&nbsp; [Build for Android](#android-building) &nbsp;·&nbsp; [Build for iPhone](#iphone-ios) &nbsp;·&nbsp; [Limitations](#known-limitations)
+
 </div>
 
 <br>
 
-<div align="center">
+## Highlights
+
 <table>
   <tr>
-    <td><img src="docs/screenshots/home.png" width="180" alt="Home"></td>
-    <td><img src="docs/screenshots/queue.png" width="180" alt="Queue"></td>
-    <td><img src="docs/screenshots/library.png" width="180" alt="Library"></td>
-    <td><img src="docs/screenshots/activity.png" width="180" alt="Activity"></td>
-    <td><img src="docs/screenshots/settings.png" width="180" alt="Settings"></td>
+    <td width="33%" valign="top"><b>📥&nbsp; Paste, press Start</b><br>Links are checked against gallery-dl's supported sites. Nothing downloads until you say so, one link at a time, in the background.</td>
+    <td width="33%" valign="top"><b>🗂&nbsp; A folder per link</b><br>Named exactly as gallery-dl names it, or by you: pick the folder before a link starts and it always saves there.</td>
+    <td width="33%" valign="top"><b>♻️&nbsp; Refresh without repeats</b><br>Renew and <i>Check for new files</i> fetch only what the library does not have. Delete a file and the next refresh brings it back.</td>
+  </tr>
+  <tr>
+    <td valign="top"><b>🎞&nbsp; Live previews and a real player</b><br>Every video loops silently in the library. The player scrubs, zooms, changes speed and locks the screen. WebM plays on iPhone too.</td>
+    <td valign="top"><b>⭐&nbsp; Favorites that stay</b><br>Long-press, tap the star: a copy is kept inside the app with its link and address, even after the link and folder are deleted.</td>
+    <td valign="top"><b>📱&nbsp; One design on every screen</b><br>Android phone, Android TV and iPhone share one look and behaviour. Dark theme, no account, nothing leaves the device but the downloads.</td>
+  </tr>
+</table>
+
+## Screenshots
+
+<div align="center">
+
+**Android phone**
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/android-home.png" width="165" alt="Home"></td>
+    <td><img src="docs/screenshots/android-library.png" width="165" alt="Library"></td>
+    <td><img src="docs/screenshots/android-folder.png" width="165" alt="A folder"></td>
+    <td><img src="docs/screenshots/android-favorites.png" width="165" alt="Selecting a file to favorite"></td>
+    <td><img src="docs/screenshots/android-viewer.png" width="165" alt="Video player"></td>
+  </tr>
+  <tr align="center">
+    <td><b>Home</b><br><sub>links by website, with their folder</sub></td>
+    <td><b>Library</b><br><sub>live previews, tags, Favorites first</sub></td>
+    <td><b>Folder</b><br><sub>2 to 4 columns, date order</sub></td>
+    <td><b>Favorites</b><br><sub>long-press, then the star</sub></td>
+    <td><b>Player</b><br><sub>scrub, speed, zoom, lock</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/android-queue.png" width="165" alt="Queue"></td>
+    <td><img src="docs/screenshots/android-folder-dialog.png" width="165" alt="Choosing a folder for a link"></td>
+    <td><img src="docs/screenshots/android-activity.png" width="165" alt="Activity"></td>
+    <td><img src="docs/screenshots/android-settings.png" width="165" alt="Settings"></td>
+    <td></td>
+  </tr>
+  <tr align="center">
+    <td><b>Queue</b><br><sub>Start, Stop all, retry</sub></td>
+    <td><b>Folder for a link</b><br><sub>asked before it starts</sub></td>
+    <td><b>Activity</b><br><sub>results and errors</sub></td>
+    <td><b>Settings</b><br><sub>pacing, cookies, storage</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+**iPhone**
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/ios-home.png" width="200" alt="Home on iPhone"></td>
+    <td><img src="docs/screenshots/ios-library.png" width="200" alt="Library on iPhone"></td>
+    <td><img src="docs/screenshots/ios-folder.png" width="200" alt="A folder on iPhone"></td>
+    <td><img src="docs/screenshots/ios-viewer.png" width="200" alt="Video player on iPhone"></td>
   </tr>
   <tr align="center">
     <td><b>Home</b></td>
-    <td><b>Queue</b></td>
     <td><b>Library</b></td>
-    <td><b>Activity</b></td>
-    <td><b>Settings</b></td>
+    <td><b>Folder</b></td>
+    <td><b>Player</b></td>
   </tr>
 </table>
+
+<sub>The pictures and videos in these screenshots are generated abstract art, and the links use placeholder
+<code>.example</code> addresses. They are not real downloads.</sub>
+
 </div>
+
+<br>
 
 ## Features
 
