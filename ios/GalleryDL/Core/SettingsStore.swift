@@ -15,13 +15,15 @@ final class SettingsStore: ObservableObject {
     @Published var folderNewestFirst: Bool { didSet { defaults.set(folderNewestFirst, forKey: Keys.folderNewestFirst) } }
     /// Silent looping previews of the videos in the library. On by default.
     @Published var livePreviews: Bool { didSet { defaults.set(livePreviews, forKey: Keys.previews) } }
+    /// How fast the live previews play, as a multiple of normal speed. 1 by default.
+    @Published var previewSpeed: Double { didSet { defaults.set(previewSpeed, forKey: Keys.previewSpeed) } }
     /// How many cookies the imported cookies.txt holds; 0 when none is imported.
     @Published private(set) var cookiesCount: Int
 
     private let defaults = UserDefaults.standard
 
     private enum Keys {
-        static let options = "gdl.options", sound = "startupSound", previews = "livePreviews", columns = "folderColumns", libraryColumns = "libraryColumns", libraryNewestFirst = "libraryNewestFirst", folderNewestFirst = "folderNewestFirst", cookies = "gdl.cookiesCount"
+        static let options = "gdl.options", sound = "startupSound", previews = "livePreviews", previewSpeed = "previewSpeed", columns = "folderColumns", libraryColumns = "libraryColumns", libraryNewestFirst = "libraryNewestFirst", folderNewestFirst = "folderNewestFirst", cookies = "gdl.cookiesCount"
     }
 
     init() {
@@ -34,6 +36,7 @@ final class SettingsStore: ObservableObject {
         // `bool(forKey:)` and `integer(forKey:)` also read values given as launch arguments, which arrive as text.
         startupSound = defaults.object(forKey: Keys.sound) == nil ? true : defaults.bool(forKey: Keys.sound)
         livePreviews = defaults.object(forKey: Keys.previews) == nil ? true : defaults.bool(forKey: Keys.previews)
+        previewSpeed = defaults.object(forKey: Keys.previewSpeed) == nil ? 1 : defaults.double(forKey: Keys.previewSpeed)
         libraryColumns = defaults.object(forKey: Keys.libraryColumns) == nil ? 2 : min(max(defaults.integer(forKey: Keys.libraryColumns), 2), 3)
         libraryNewestFirst = defaults.object(forKey: Keys.libraryNewestFirst) == nil ? true : defaults.bool(forKey: Keys.libraryNewestFirst)
         folderNewestFirst = defaults.object(forKey: Keys.folderNewestFirst) == nil ? true : defaults.bool(forKey: Keys.folderNewestFirst)
@@ -82,5 +85,6 @@ final class SettingsStore: ObservableObject {
         options.cookiesEnabled = keepCookies
         startupSound = true
         livePreviews = true
+        previewSpeed = 1
     }
 }

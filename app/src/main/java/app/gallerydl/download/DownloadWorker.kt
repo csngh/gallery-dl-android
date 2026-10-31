@@ -213,6 +213,12 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         // file gallery-dl left directly in the root has no folder of its own and goes in one named after the link.
         // A link the user gave a folder name saves everything there.
         val folder = downloadFolder(task.folderName ?: file.parentFile?.takeIf { it.canonicalFile != root.canonicalFile }?.name?.takeIf { it.isNotBlank() } ?: linkFolder)
+        if (container.libraryRepository.hasFileIn(task.url, file.name, folder)) {
+            // Already in the library from an earlier run of this link: keep that one, and record the fresh address.
+            container.libraryRepository.adoptFile(task.url, file.name, fileUrl.orEmpty(), task.id)
+            file.delete()
+            return
+        }
         val saved = container.mediaSaver.save(file, folder, tree)
         file.delete()
         // Looked up per file, so deleting the folder in the library mid-download cannot leave a dangling id.

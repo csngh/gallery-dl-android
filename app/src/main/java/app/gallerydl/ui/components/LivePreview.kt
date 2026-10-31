@@ -73,6 +73,9 @@ class PreviewHost(private val context: Context) {
 
     /** The Live previews setting. */
     var enabledBySetting by mutableStateOf(true)
+
+    /** The Preview speed setting, as a multiple of normal speed. */
+    @Volatile var speed = 1f
     var appVisible by mutableStateOf(true)
     var viewerOpen by mutableStateOf(false)
     private var batterySaver by mutableStateOf(false)
@@ -176,11 +179,11 @@ fun LivePreview(key: String, clips: List<LibraryItem>, modifier: Modifier = Modi
         host.request(key)
         onDispose { host.cancel(key) }
     }
-    if (host.isActive(key)) StripSurface(strips, clips, modifier)
+    if (host.isActive(key)) StripSurface(host, strips, clips, modifier)
 }
 
 @Composable
-private fun StripSurface(cache: PreviewStripCache, clips: List<LibraryItem>, modifier: Modifier) {
+private fun StripSurface(host: PreviewHost, cache: PreviewStripCache, clips: List<LibraryItem>, modifier: Modifier) {
     var frame by remember { mutableStateOf<ImageBitmap?>(null) }
     val alpha by animateFloatAsState(if (frame != null) 1f else 0f, tween(250), label = "previewFade")
     // The last frame of the strip that just ended, fading out while the next one starts.
@@ -218,7 +221,7 @@ private fun StripSurface(cache: PreviewStripCache, clips: List<LibraryItem>, mod
                 var last = -1
                 var slot = 0
                 while (true) {
-                    val index = ((SystemClock.elapsedRealtimeNanos() - began) / 1e9 * strip.fps).toInt()
+                    val index = ((SystemClock.elapsedRealtimeNanos() - began) / 1e9 * strip.fps * host.speed).toInt()
                     if (index >= strip.frameCount) break
                     if (index != last) {
                         last = index
@@ -259,10 +262,11 @@ private fun StripSurface(cache: PreviewStripCache, clips: List<LibraryItem>, mod
 
 /** Creates the host for the library screen and frees it when the screen goes away. */
 @Composable
-fun rememberPreviewHost(enabledBySetting: Boolean): PreviewHost {
+fun rememberPreviewHost(enabledBySetting: Boolean, speed: Float = 1f): PreviewHost {
     val context = LocalContext.current
     val host = remember { PreviewHost(context.applicationContext) }
     host.enabledBySetting = enabledBySetting
+    host.speed = speed
     DisposableEffect(host) { onDispose { host.dispose() } }
     return host
 }

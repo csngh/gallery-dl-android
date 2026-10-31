@@ -31,7 +31,9 @@ import androidx.compose.material3.TopAppBar
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -95,6 +97,8 @@ import app.gallerydl.ui.queue.statusLabel
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
+    onOpenQueue: () -> Unit,
+    onOpenActivity: () -> Unit,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
@@ -124,7 +128,9 @@ fun HomeScreen(
                 IconButton(onClick = viewModel::renewAll) {
                     Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.action_renew))
                 }
-                LinksMenu(
+                HomeMenu(
+                    onOpenQueue = onOpenQueue,
+                    onOpenActivity = onOpenActivity,
                     onExport = {
                         if (loaded.isNullOrEmpty()) {
                             Toast.makeText(context, nothingToExport, Toast.LENGTH_SHORT).show()
@@ -407,15 +413,32 @@ private val SiteTones = listOf(Tone.Blue, Tone.Violet, Tone.Teal, Tone.Pink)
 internal fun String.displayName(): String =
     if ('.' in this) this else replaceFirstChar { it.uppercase() }
 
-/** The three-dot button on Home: export every link to a text file, or import links from one. */
+/** The three-dot button on Home: open the Queue or Activity, export every link to a text file, or import links from one. */
 @Composable
-private fun LinksMenu(onExport: () -> Unit, onImport: () -> Unit) {
+private fun HomeMenu(onOpenQueue: () -> Unit, onOpenActivity: () -> Unit, onExport: () -> Unit, onImport: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_links_menu))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.nav_queue)) },
+                leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onOpenQueue()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.nav_activity)) },
+                leadingIcon = { Icon(Icons.Filled.Insights, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onOpenActivity()
+                },
+            )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_export_links)) },
                 leadingIcon = { Icon(Icons.Filled.FileUpload, contentDescription = null) },

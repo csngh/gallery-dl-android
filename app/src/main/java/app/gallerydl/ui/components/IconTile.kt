@@ -59,7 +59,8 @@ fun IconTile(
 /** A screen title: plain text, large and bold, with no icon beside it. */
 @Composable
 fun ScreenTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge)
+    // One line, always: next to a back arrow and a button the title must not wrap on a narrow screen.
+    Text(text, style = MaterialTheme.typography.titleLarge, maxLines = 1, softWrap = false)
 }
 
 /** Icon and tone that always stand for a download result. */

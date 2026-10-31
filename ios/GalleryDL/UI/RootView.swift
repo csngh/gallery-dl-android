@@ -23,22 +23,31 @@ struct RootView: View {
                     if showSettings {
                         // Swipe from the left edge to go back to Home, which slides in underneath.
                         SwipeBackContainer(onBack: { showSettings = false }, behind: {
-                            HomeScreen(input: homeInput) {}.appBackground()
+                            HomeScreen(input: homeInput, onOpenSettings: {}, onOpenQueue: {}, onOpenActivity: {}).appBackground()
                         }, top: {
                             SettingsScreen { showSettings = false }.appBackground()
                         })
                     } else {
                         switch tab {
-                        case .home: HomeScreen(input: homeInput) { showSettings = true }
-                        case .queue: QueueScreen(input: queueInput)
-                        case .library: LibraryScreen(model: library)
-                        case .activity: ActivityScreen()
+                        case .home:
+                            HomeScreen(input: homeInput, onOpenSettings: { showSettings = true }, onOpenQueue: { tab = .queue }, onOpenActivity: { tab = .activity })
+                                .transition(.opacity)
+                        case .queue: QueueScreen(input: queueInput, onBack: { tab = .home }).transition(.opacity)
+                        case .library: LibraryScreen(model: library).transition(.opacity)
+                        case .activity: ActivityScreen(onBack: { tab = .home }).transition(.opacity)
                         }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Switching tabs is a short fade.
+                .animation(.easeInOut(duration: 0.15), value: tab)
                 // Settings is a full screen of its own, so the navigation bar steps aside.
-                if !showSettings { BottomBar(selection: $tab) }
+                if !showSettings {
+                    // The Library tab pressed again leaves the open folder and shows the list of folders.
+                    BottomBar(selection: $tab, onReselect: {
+                        if $0 == .library { library.closeFolder() } else if $0 == .home { tab = .home }
+                    })
+                }
             }
 
             if let request = ui.viewer { ViewerOverlay(request: request).transition(.opacity).zIndex(1) }
@@ -50,7 +59,8 @@ struct RootView: View {
         .font(.inter(size: 16))
         .preferredColorScheme(.dark)
         .environmentObject(previews)
-        .onAppear { previews.enabledBySetting = settings.livePreviews }
+        .onAppear { previews.enabledBySetting = settings.livePreviews; PreviewHost.speed = settings.previewSpeed }
+        .onChange(of: settings.previewSpeed) { PreviewHost.speed = $0 }
         .onChange(of: settings.livePreviews) { previews.enabledBySetting = $0 }
         // Previews stop behind the full-screen viewer and whenever the app is not in front.
         .onChange(of: ui.viewer) { previews.viewerOpen = $0 != nil }

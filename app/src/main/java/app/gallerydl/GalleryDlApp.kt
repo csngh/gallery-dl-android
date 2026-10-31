@@ -45,6 +45,7 @@ class AppContainer(context: Context) {
     val libraryNewestFirst: StateFlow<Boolean> = settingsRepository.libraryNewestFirst.stateIn(appScope, SharingStarted.Eagerly, true)
     val folderNewestFirst: StateFlow<Boolean> = settingsRepository.folderNewestFirst.stateIn(appScope, SharingStarted.Eagerly, true)
     val livePreviews: StateFlow<Boolean> = settingsRepository.livePreviews.stateIn(appScope, SharingStarted.Eagerly, true)
+    val previewSpeed: StateFlow<Float> = settingsRepository.previewSpeed.stateIn(appScope, SharingStarted.Eagerly, 1f)
     val cookiesCount: StateFlow<Int> = settingsRepository.cookiesCount.stateIn(appScope, SharingStarted.Eagerly, 0)
     val urlValidator = UrlValidator(pythonBridge)
     val folderChoice = app.gallerydl.download.FolderChoice(pythonBridge, settingsRepository, database.taskDao(), database.libraryDao())

@@ -22,6 +22,9 @@ struct HomeScreen: View {
     @EnvironmentObject private var ui: UIState
     @ObservedObject var input: LinkInputModel
     let onOpenSettings: () -> Void
+    /// The Queue and Activity screens have no tab of their own; they open from the menu.
+    let onOpenQueue: () -> Void
+    let onOpenActivity: () -> Void
     @State private var importing = false
 
     private var groups: [SiteGroup] {
@@ -35,6 +38,9 @@ struct HomeScreen: View {
             TopBar(title: S.navHome) {
                 IconButton(symbol: "arrow.clockwise", color: Brand.onSurfaceVariant, label: S.actionRenew) { app.engine.renewAll() }
                 Menu {
+                    Button { onOpenQueue() } label: { Label(S.navQueue, systemImage: Destination.queue.symbol) }
+                    Button { onOpenActivity() } label: { Label(S.navActivity, systemImage: Destination.activity.symbol) }
+                    Divider()
                     Button { exportLinks() } label: { Label(S.actionExportLinks, systemImage: "square.and.arrow.up") }
                     Button { importing = true } label: { Label(S.actionImportLinks, systemImage: "square.and.arrow.down") }
                 } label: {

@@ -26,6 +26,7 @@ struct ActivityScreen: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var store: AppStore
     @State private var filter = ActivityFilter.all
+    let onBack: () -> Void
 
     var body: some View {
         let tasks = store.tasks
@@ -35,13 +36,15 @@ struct ActivityScreen: View {
         let retryable = partial + failed
 
         VStack(spacing: 0) {
-            TopBar(title: S.navActivity) {
+            TopBar(title: S.navActivity, leading: {
+                IconButton(symbol: "chevron.left", color: Brand.onSurface, label: S.actionBack, action: onBack)
+            }, trailing: {
                 if retryable > 0 {
                     TextPill(title: S.actionRetryFailed(retryable), symbol: "arrow.clockwise", color: ActionColors.positive) {
                         app.engine.retryAllFailed()
                     }
                 }
-            }
+            })
             if !store.loaded {
                 ShimmerCardList(count: 4)
             } else if tasks.isEmpty {

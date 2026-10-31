@@ -21,6 +21,8 @@ struct WebMAudioTrack {
     let sampleRate: Double
     /// "A_OPUS", "A_VORBIS" and so on, as the file names it.
     let codec: String
+    /// The codec's own setup data; for Vorbis, its three headers.
+    let codecPrivate: Data
 }
 
 /// A WebM (Matroska) file read straight from disk, with every video and sound frame noted down so that playing, seeking
@@ -161,7 +163,7 @@ final class WebMFile {
         static let segment = 0x18538067, info = 0x1549A966, tracks = 0x1654AE6B, cluster = 0x1F43B675
         static let cues = 0x1C53BB6B, tags = 0x1254C367, seekHead = 0x114D9B74, chapters = 0x1043A770, attachments = 0x1941A469
         static let timecodeScale = 0x2AD7B1, durationElement = 0x4489
-        static let trackEntry = 0xAE, trackNumber = 0xD7, trackType = 0x83, codecID = 0x86, videoSettings = 0xE0
+        static let trackEntry = 0xAE, trackNumber = 0xD7, trackType = 0x83, codecID = 0x86, codecPrivate = 0x63A2, videoSettings = 0xE0
         static let pixelWidth = 0xB0, pixelHeight = 0xBA, audioSettings = 0xE1, samplingFrequency = 0xB5, channels = 0x9F
         static let clusterTime = 0xE7, simpleBlock = 0xA3, blockGroup = 0xA0, block = 0xA1, referenceBlock = 0xFB
     }
@@ -298,6 +300,7 @@ final class WebMFile {
 
     private func readTrackEntry(_ start: Int, _ end: Int) {
         var number = 0, type = 0, codec = "", width = 0, height = 0
+        var codecPrivate = Data()
         var channels = 1, sampleRate = 8000.0
         var position = start
         while let element = header(at: position, limit: end) {
@@ -305,6 +308,7 @@ final class WebMFile {
             case ID.trackNumber: number = uint(element.bodyStart, element.end)
             case ID.trackType: type = uint(element.bodyStart, element.end)
             case ID.codecID: codec = string(element.bodyStart, element.end)
+            case ID.codecPrivate: codecPrivate = Data(bytes: base + element.bodyStart, count: max(0, element.end - element.bodyStart))
             case ID.videoSettings:
                 var inner = element.bodyStart
                 while let field = header(at: inner, limit: element.end) {
@@ -324,7 +328,7 @@ final class WebMFile {
             position = element.end
         }
         if type == 2, audio == nil {
-            audio = WebMAudioTrack(number: number, channels: channels, sampleRate: sampleRate, codec: codec)
+            audio = WebMAudioTrack(number: number, channels: channels, sampleRate: sampleRate, codec: codec, codecPrivate: codecPrivate)
             audioNumber = number
         }
         if type == 1, video == nil, codec == "V_VP8" || codec == "V_VP9" {

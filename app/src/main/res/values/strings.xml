@@ -90,7 +90,7 @@
     <string name="action_remove_tag">Remove tag</string>
     <string name="tag_folder_title">Tag this folder</string>
     <string name="tag_label">Tag</string>
-    <string name="action_links_menu">Export or import links</string>
+    <string name="action_links_menu">More options</string>
     <string name="action_export_links">Export links</string>
     <string name="action_import_links">Import links</string>
     <string name="export_file_name">gallery-dl-links.txt</string>
@@ -98,6 +98,13 @@
         <item quantity="one">%d link was exported.</item>
         <item quantity="other">%d links were exported.</item>
     </plurals>
+    <string name="action_export_favorites">Export video links</string>
+    <string name="export_favorites_file_name">favorite-videos.csv</string>
+    <plurals name="export_favorites_done">
+        <item quantity="one">%d video link was exported.</item>
+        <item quantity="other">%d video links were exported.</item>
+    </plurals>
+    <string name="export_favorites_empty">There are no favorite videos to export yet.</string>
     <string name="export_empty">There are no links to export yet.</string>
     <string name="transfer_failed">Unable to use this file. Please try another one.</string>
     <string name="import_title">Importing links</string>
@@ -283,6 +290,8 @@
     <string name="settings_appearance_title">Startup and previews</string>
     <string name="settings_appearance_body">What happens when the app opens, and how the library looks.</string>
     <string name="option_live_previews_title">Live previews</string>
+    <string name="option_preview_speed_title">Preview speed</string>
+    <string name="option_preview_speed_body">How fast the live previews play in the library. Slower is easier to follow and lighter on the battery.</string>
     <string name="option_live_previews_body">Plays a silent, looping preview of each video in the library, from a short clip that is saved once for every video. It pauses when you turn on battery saver.</string>
 
     <string name="channel_progress">Downloads in progress</string>

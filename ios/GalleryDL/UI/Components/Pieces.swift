@@ -276,6 +276,12 @@ struct GalleryImage: View {
 enum Destination: CaseIterable, Hashable {
     case home, queue, library, activity
 
+    /// What the bottom bar shows. Queue and Activity are reached from the menu on Home instead.
+    static let tabs: [Destination] = [.home, .library]
+
+    /// The tab that is marked while this screen is showing: Queue and Activity belong to Home.
+    var tab: Destination { self == .queue || self == .activity ? .home : self }
+
     var label: String {
         switch self {
         case .home: return S.navHome
@@ -307,12 +313,14 @@ enum Destination: CaseIterable, Hashable {
 /// The Material 3 navigation bar: an icon on a tinted pill when selected, with its label below.
 struct BottomBar: View {
     @Binding var selection: Destination
+    /// Called when the tab that is already showing is pressed again.
+    var onReselect: (Destination) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Destination.allCases, id: \.self) { destination in
-                let selected = selection == destination
-                Button { selection = destination } label: {
+            ForEach(Destination.tabs, id: \.self) { destination in
+                let selected = selection.tab == destination
+                Button { if selected { onReselect(destination) } else { selection = destination } } label: {
                     VStack(spacing: Spacing.xs) {
                         Image(systemName: destination.symbol)
                             .font(.system(size: 20, weight: .semibold))

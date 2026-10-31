@@ -24,7 +24,7 @@ object AppViewModelProvider {
         }
         initializer {
             val c = app().container
-            LibraryViewModel(c.libraryRepository, c.livePreviews, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.libraryColumns, c.libraryNewestFirst, c.folderNewestFirst, c.settingsRepository)
+            LibraryViewModel(c.libraryRepository, c.livePreviews, c.previewSpeed, c.thumbnailCache, c.previewStripCache, c.folderColumns, c.libraryColumns, c.libraryNewestFirst, c.folderNewestFirst, c.settingsRepository)
         }
         initializer { ActivityViewModel(app().container.downloadRepository) }
         initializer {
@@ -35,7 +35,7 @@ object AppViewModelProvider {
             val c = app().container
             SettingsViewModel(
                 c.settingsRepository, c.downloadRepository, c.pythonBridge, c.applicationContext,
-                c.options, c.destination, c.cookiesCount, c.startupSound, c.livePreviews, c.thumbnailCache, c.previewStripCache,
+                c.options, c.destination, c.cookiesCount, c.startupSound, c.livePreviews, c.previewSpeed, c.thumbnailCache, c.previewStripCache,
             )
         }
     }

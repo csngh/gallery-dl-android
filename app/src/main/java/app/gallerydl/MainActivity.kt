@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import app.gallerydl.ui.components.ViewerState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +40,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.gallerydl.ui.activity.ActivityScreen
 import app.gallerydl.ui.library.LibraryScreen
+import app.gallerydl.ui.library.LibraryViewModel
+import app.gallerydl.ui.AppViewModelProvider
+import androidx.lifecycle.ViewModelProvider
 import app.gallerydl.ui.queue.QueueScreen
 import app.gallerydl.ui.theme.GalleryDlTheme
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -59,8 +63,9 @@ import app.gallerydl.ui.components.RailMinWidth
 import androidx.compose.material.icons.filled.Home
 import app.gallerydl.ui.home.HomeScreen
 import app.gallerydl.ui.settings.SettingsScreen
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,6 +81,9 @@ private enum class Destination(val route: String, val label: Int, val icon: Imag
     Library("library", R.string.nav_library, Icons.Filled.PhotoLibrary, Tone.Violet),
     Activity("activity", R.string.nav_activity, Icons.Filled.Insights, Tone.Teal),
 }
+
+/** What the bottom bar and the side rail show. Queue and Activity are reached from the menu on Home instead. */
+private val TABS = listOf(Destination.Home, Destination.Library)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,6 +111,8 @@ class MainActivity : ComponentActivity() {
 
 }
 
+private const val TAB_FADE_MS = 150
+
 @Composable
 private fun AppRoot() {
     RequestNotificationPermission()
@@ -114,23 +124,49 @@ private fun AppRoot() {
     val wide = LocalConfiguration.current.screenWidthDp.dp >= RailMinWidth
     // Settings is a full screen of its own, so the navigation bar and rail step aside.
     val onSettings = currentDestination?.route == SETTINGS_ROUTE
-    val navigateTo: (Destination) -> Unit = { destination ->
+    // Queue and Activity open from Home's menu and have no tab of their own, so Home stays marked while they are open.
+    val isSelected: (Destination) -> Boolean = { destination ->
+        val route = currentDestination?.route
+        if (destination == Destination.Home) route == Destination.Home.route || route == Destination.Queue.route || route == Destination.Activity.route
+        else currentDestination?.hierarchy?.any { it.route == destination.route } == true
+    }
+    val navigateTo: (Destination) -> Unit = navigate@{ destination ->
+        if (destination == Destination.Library && isSelected(destination)) {
+            // The Library tab pressed again leaves the open folder and shows the list of folders.
+            navController.runCatching { getBackStackEntry(Destination.Library.route) }.getOrNull()?.let { entry ->
+                ViewModelProvider(entry, AppViewModelProvider.Factory)[LibraryViewModel::class.java].showFolders()
+            }
+            return@navigate
+        }
+        if (destination == Destination.Home && (currentDestination?.route == Destination.Queue.route || currentDestination?.route == Destination.Activity.route)) {
+            // Home pressed while Queue or Activity is open (they belong to Home): back to Home itself.
+            navController.popBackStack(Destination.Home.route, inclusive = false)
+            return@navigate
+        }
         navController.navigate(destination.route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
             restoreState = true
         }
     }
-    val isSelected: (Destination) -> Boolean =
-        { destination -> currentDestination?.hierarchy?.any { it.route == destination.route } == true }
 
+    // Full screen while the viewer is open: the system bars are hidden until swiped in from the edge.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.LaunchedEffect(ViewerState.open) {
+        val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
+        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (ViewerState.open) controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        else controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
+    androidx.compose.foundation.layout.Box {
     Scaffold(
         // Each screen draws its own top bar, which handles the status-bar inset.
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            if (!wide && !onSettings) {
+            if (!wide && !onSettings && !ViewerState.open) {
                 NavigationBar {
-                    Destination.entries.forEach { destination ->
+                    TABS.forEach { destination ->
                         NavigationBarItem(
                             selected = isSelected(destination),
                             onClick = { navigateTo(destination) },
@@ -156,7 +192,7 @@ private fun AppRoot() {
         ) {
             if (wide && !onSettings) {
                 NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                    Destination.entries.forEach { destination ->
+                    TABS.forEach { destination ->
                         NavigationRailItem(
                             selected = isSelected(destination),
                             onClick = { navigateTo(destination) },
@@ -175,19 +211,27 @@ private fun AppRoot() {
                 navController = navController,
                 startDestination = Destination.Home.route,
                 modifier = Modifier.weight(1f),
-                // Switching tabs and opening Settings is instant: no fade or slide between screens.
-                enterTransition = { EnterTransition.None },
-                exitTransition = { ExitTransition.None },
-                popEnterTransition = { EnterTransition.None },
-                popExitTransition = { ExitTransition.None },
+                // Switching tabs and opening Settings is a short fade: no slide, and quick enough not to be waited on.
+                enterTransition = { fadeIn(tween(TAB_FADE_MS)) },
+                exitTransition = { fadeOut(tween(TAB_FADE_MS)) },
+                popEnterTransition = { fadeIn(tween(TAB_FADE_MS)) },
+                popExitTransition = { fadeOut(tween(TAB_FADE_MS)) },
             ) {
-                composable(Destination.Home.route) { HomeScreen(onOpenSettings = { navController.navigate(SETTINGS_ROUTE) }) }
-                composable(Destination.Queue.route) { QueueScreen() }
+                composable(Destination.Home.route) {
+                    HomeScreen(
+                        onOpenSettings = { navController.navigate(SETTINGS_ROUTE) },
+                        onOpenQueue = { navController.navigate(Destination.Queue.route) { launchSingleTop = true } },
+                        onOpenActivity = { navController.navigate(Destination.Activity.route) { launchSingleTop = true } },
+                    )
+                }
+                composable(Destination.Queue.route) { QueueScreen(onBack = { navController.popBackStack() }) }
                 composable(Destination.Library.route) { LibraryScreen() }
-                composable(Destination.Activity.route) { ActivityScreen() }
+                composable(Destination.Activity.route) { ActivityScreen(onBack = { navController.popBackStack() }) }
                 composable(SETTINGS_ROUTE) { SettingsScreen(onBack = { navController.popBackStack() }) }
             }
         }
+    }
+    ViewerState.content?.invoke()
     }
 }
 

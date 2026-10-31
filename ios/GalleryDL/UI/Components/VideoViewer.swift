@@ -71,7 +71,10 @@ private struct WebMSurface: UIViewRepresentable {
 /// Owns the player of the full-screen viewer: play and pause, seeking, and the playback speed.
 @MainActor
 final class VideoController: ObservableObject {
-    let player = AVPlayer()
+    /// A queue player, so that looping can use `AVPlayerLooper`, which has the next pass ready before the last one ends.
+    let player = AVQueuePlayer()
+    private var asset: AVURLAsset?
+    private var looper: AVPlayerLooper?
     @Published private(set) var isPlaying = false
     @Published var current = 0.0
     @Published private(set) var duration = 0.0
@@ -93,7 +96,7 @@ final class VideoController: ObservableObject {
     private var endObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
 
-    static let speeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+    static let speeds: [Double] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
     func load(_ item: LibraryItem) async {
         if item.isWebM { await loadWebM(item); return }
@@ -102,9 +105,14 @@ final class VideoController: ObservableObject {
         guard (try? await asset.load(.isPlayable)) == true else { unplayable = true; return }
         duration = ((try? await asset.load(.duration))?.seconds).flatMap { $0.isFinite ? $0 : nil } ?? 0
         await AudioSessionQueue.playback()
+        self.asset = asset
         let playerItem = AVPlayerItem(asset: asset)
-        player.replaceCurrentItem(with: playerItem)
-        player.actionAtItemEnd = .pause
+        if looping {
+            looper = AVPlayerLooper(player: player, templateItem: playerItem)
+        } else {
+            player.replaceCurrentItem(with: playerItem)
+            player.actionAtItemEnd = .pause
+        }
 
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { [weak self] time in
             Task { @MainActor in
@@ -115,13 +123,8 @@ final class VideoController: ObservableObject {
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.looping {
-                    // Loop: straight back to the start, at the chosen speed.
-                    self.seek(to: 0)
-                    self.player.rate = Float(self.speed)
-                } else {
-                    self.isPlaying = false
-                }
+                // A loop never reaches here: the looper keeps playing into the next pass.
+                if !self.looping { self.isPlaying = false }
             }
         }
         statusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
@@ -136,6 +139,7 @@ final class VideoController: ObservableObject {
         await AudioSessionQueue.playback()
         guard let made = await Task.detached(priority: .userInitiated, operation: { WebMPlayer(url: url) }).value else { unplayable = true; return }
         webm = made
+        made.setLooping(looping)
         // The length can still change once the rest of a big file has been read in the background.
         made.onIndexComplete = { [weak self] in Task { @MainActor in self?.duration = made.duration } }
         duration = made.duration
@@ -144,21 +148,17 @@ final class VideoController: ObservableObject {
                 guard let self, self.webm === made, !self.scrubbing else { return }
                 if self.silentReason != made.silentReason { self.silentReason = made.silentReason }
                 self.current = min(time, made.endTime)
-                if self.isPlaying, time >= made.endTime { self.webmEnded() }
+                // While looping the player carries on into the next pass by itself, so there is no end to react to.
+                if self.isPlaying, !self.looping, time >= made.endTime { self.webmEnded() }
             }
         }
     }
 
     private func webmEnded() {
         guard let webm else { return }
-        if looping {
-            current = 0
-            webm.seek(to: 0, rate: Float(speed))
-        } else {
-            webm.pause()
-            isPlaying = false
-            current = webm.endTime
-        }
+        webm.pause()
+        isPlaying = false
+        current = webm.endTime
     }
 
     func play() {
@@ -172,7 +172,12 @@ final class VideoController: ObservableObject {
             isPlaying = true
             return
         }
-        if duration > 0, current >= duration - 0.25 { seek(to: 0) }
+        if player.currentItem == nil, let asset {
+            // A loop that was switched off ran out and left the queue empty: start the video again.
+            player.insert(AVPlayerItem(asset: asset), after: nil)
+            player.actionAtItemEnd = .pause
+            current = 0
+        } else if duration > 0, current >= duration - 0.25 { seek(to: 0) }
         // Setting the rate starts playback at that speed; the speed survives pausing because it is kept here.
         player.rate = Float(speed)
     }
@@ -210,6 +215,23 @@ final class VideoController: ObservableObject {
     func toggleLoop() {
         looping.toggle()
         UserDefaults.standard.set(looping, forKey: "videoLoop")
+        if let webm {
+            // Back to the position within the video, so the clock starts counting from one pass again.
+            if !looping { webm.seek(to: webm.currentTime, rate: isPlaying ? Float(speed) : 0) }
+            webm.setLooping(looping)
+        } else if let asset, player.currentItem != nil {
+            if looping {
+                // The looper takes over the queue, so the video is put back where it was.
+                let at = current, wasPlaying = isPlaying
+                looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(asset: asset))
+                player.seek(to: CMTime(seconds: at, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+                if wasPlaying { player.rate = Float(speed) }
+            } else {
+                // The pass that is playing finishes, and then it stops.
+                looper?.disableLooping()
+                looper = nil
+            }
+        }
     }
 
     func setSpeed(_ value: Double) {
@@ -228,7 +250,10 @@ final class VideoController: ObservableObject {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
         statusObservation = nil
-        player.replaceCurrentItem(with: nil)
+        looper?.disableLooping()
+        looper = nil
+        player.removeAllItems()
+        asset = nil
         isPlaying = false
         AudioSessionQueue.quiet()
     }
@@ -277,6 +302,8 @@ struct VideoViewer: View {
     @Binding var zoomed: Bool
     /// While locked, every touch is ignored and the controls are hidden, except the button that unlocks.
     @Binding var locked: Bool
+    /// Set while a finger is on the progress bar (see `ViewerOverlay`), so the viewer ignores its other gestures.
+    @Binding var scrubbing: Bool
     /// While locked, a touch shows the unlock button for a moment.
     @State private var unlockVisible = false
     @State private var unlockTouches = 0
@@ -289,6 +316,8 @@ struct VideoViewer: View {
     @State private var controlsVisible = true
     /// Set while a horizontal swipe scrubs through the video: where it started, whether it was playing, how far it moved.
     @State private var scrubStart: (time: Double, wasPlaying: Bool)?
+    /// True only while a finger is on the progress bar. Swiping across the video does not set it.
+    @State private var barSeeking = false
     @State private var scrubDelta = 0.0
     @State private var landscape = false
 
@@ -345,6 +374,8 @@ struct VideoViewer: View {
         // Swiping sideways on a video scrubs it, so the pager never pages away from a video page.
         // Only the page on screen may lock the pager: neighbours are built in advance and would otherwise lock it too.
         .background { if active { PagerLock(locked: zoomed || item.isVideo || item.isAudio) } }
+        .onChange(of: barSeeking) { scrubbing = $0 }
+        .onDisappear { scrubbing = false }
         .task(id: active) {
             if active {
                 if item.isVideo { ScreenOrientation.allowRotation() }
@@ -527,31 +558,51 @@ struct VideoViewer: View {
     private var seekRow: some View {
         HStack(spacing: Spacing.sm) {
             Text(format(controller.current)).textStyle(.labelMedium, color: .white).frame(minWidth: 36)
-            // Dragging the bar shows the picture at that moment live, like swiping across the video does.
-            Slider(
-                value: Binding(get: { controller.current }, set: { value in
-                    guard controller.scrubbing else { controller.current = value; return }
-                    scrubDelta = value - (scrubStart?.time ?? value)
-                    controller.scrub(to: value)
-                }),
-                in: 0...max(controller.duration, 0.1),
-                onEditingChanged: { editing in
-                    if editing {
-                        scrubStart = (controller.current, controller.isPlaying)
-                        scrubDelta = 0
-                        controller.scrubbing = true
-                        controller.pause()
-                    } else if let start = scrubStart {
-                        scrubStart = nil
-                        controller.scrubbing = false
-                        controller.seek(to: controller.current)
-                        if start.wasPlaying { controller.play() }
-                    }
-                },
-            )
-            .accentColor(Brand.primary)
+            seekBar
             Text(format(controller.duration)).textStyle(.labelMedium, color: .white).frame(minWidth: 36)
         }
+    }
+
+    /// The progress bar. A touch anywhere on it jumps there at once, and dragging carries on from that point, showing the
+    /// picture at that moment live like swiping across the video does. It is the only way to seek in a zoomed-in video.
+    private var seekBar: some View {
+        GeometryReader { geo in
+            let thumb: CGFloat = 16
+            let span = max(geo.size.width - thumb, 1)
+            let end = max(controller.duration, 0.1)
+            let fraction = CGFloat(min(max(controller.current / end, 0), 1))
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.3)).frame(height: 4).padding(.horizontal, thumb / 2)
+                Capsule().fill(Brand.primary).frame(width: span * fraction, height: 4).padding(.leading, thumb / 2)
+                Circle().fill(Brand.primary).frame(width: thumb, height: thumb).offset(x: span * fraction)
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let target = Double(min(max((value.location.x - thumb / 2) / span, 0), 1)) * end
+                        if scrubStart == nil {
+                            scrubStart = (controller.current, controller.isPlaying)
+                            controller.scrubbing = true
+                            controller.pause()
+                        }
+                        barSeeking = true
+                        scrubDelta = target - (scrubStart?.time ?? target)
+                        controller.scrub(to: target)
+                    }
+                    .onEnded { value in
+                        let target = Double(min(max((value.location.x - thumb / 2) / span, 0), 1)) * end
+                        let wasPlaying = scrubStart?.wasPlaying ?? false
+                        barSeeking = false
+                        scrubStart = nil
+                        controller.scrubbing = false
+                        controller.seek(to: target)
+                        if wasPlaying { controller.play() }
+                    }
+            )
+        }
+        .frame(height: 44)
     }
 
     private var speedMenu: some View {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ButtonDefaults
@@ -25,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -82,24 +84,25 @@ import app.gallerydl.ui.components.readableWidth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ActivityScreen(viewModel: ActivityViewModel = viewModel(factory = AppViewModelProvider.Factory)) {
+fun ActivityScreen(onBack: () -> Unit, viewModel: ActivityViewModel = viewModel(factory = AppViewModelProvider.Factory)) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val stats = state.stats
 
     Column(Modifier.readableWidth()) {
         TopAppBar(
             title = { ScreenTitle(stringResource(R.string.nav_activity)) },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                }
+            },
             actions = {
                 if (stats.retryable > 0) {
                     TextButton(
                         onClick = viewModel::retryAllFailed,
                         colors = ButtonDefaults.textButtonColors(contentColor = ActionColors.Positive),
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null)
-                        Text(
-                            stringResource(R.string.action_retry_failed, stats.retryable),
-                            modifier = Modifier.padding(start = Spacing.Sm),
-                        )
+                        Text(stringResource(R.string.action_retry_failed, stats.retryable), maxLines = 1)
                     }
                 }
             },

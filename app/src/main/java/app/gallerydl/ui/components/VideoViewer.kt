@@ -2,6 +2,8 @@ package app.gallerydl.ui.components
 
 import android.app.Activity
 import android.content.Context
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -10,6 +12,9 @@ import android.os.SystemClock
 import android.view.TextureView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -28,6 +33,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,6 +69,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -97,11 +104,16 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ClippingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.SeekParameters
 import app.gallerydl.R
 import app.gallerydl.ui.theme.Spacing
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
@@ -111,6 +123,7 @@ import kotlin.math.abs
 @androidx.annotation.OptIn(UnstableApi::class)
 @Stable
 class VideoController(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("player", Context.MODE_PRIVATE)
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
@@ -151,10 +164,41 @@ class VideoController(context: Context) {
 
     fun load(uri: Uri) {
         if (player.currentMediaItem != null) return
-        player.setMediaItem(MediaItem.fromUri(uri))
+        val item = MediaItem.fromUri(uri)
+        val end = pictureEndUs(uri)
+        if (end != null) {
+            // The sound runs a little longer than the picture, which would leave the last frame frozen on screen before a
+            // loop starts again. The video is cut where the picture ends, so the loop turns over at once.
+            player.setMediaSource(ClippingMediaSource(ProgressiveMediaSource.Factory(DefaultDataSource.Factory(appContext)).createMediaSource(item), 0, end))
+        } else {
+            player.setMediaItem(item)
+        }
         player.setPlaybackSpeed(speed)
         player.prepare()
     }
+
+    /**
+     * Where the picture ends, in microseconds, when the sound track is a little longer than it (by up to a second); null
+     * when the two end together or the file cannot be read.
+     */
+    private fun pictureEndUs(uri: Uri): Long? = runCatching {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(appContext, uri, null)
+            var video = 0L
+            var audio = 0L
+            for (i in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(i)
+                if (!format.containsKey(MediaFormat.KEY_DURATION)) continue
+                val length = format.getLong(MediaFormat.KEY_DURATION)
+                val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
+                if (mime.startsWith("video/")) video = maxOf(video, length) else if (mime.startsWith("audio/")) audio = maxOf(audio, length)
+            }
+            video.takeIf { it > 0 && audio - it in 5_000..1_000_000 }
+        } finally {
+            extractor.release()
+        }
+    }.getOrNull()
 
     /** Called often, to move the seek bar while playing. */
     fun tick() {
@@ -205,7 +249,7 @@ class VideoController(context: Context) {
     }
 
     companion object {
-        val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
     }
 }
 
@@ -257,6 +301,8 @@ fun VideoViewer(
 
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    val zoomScope = rememberCoroutineScope()
+    var zoomAnimation by remember { mutableStateOf<Job?>(null) }
     var size by remember { mutableStateOf(IntSize.Zero) }
     var controlsVisible by remember { mutableStateOf(true) }
     // While locked, a touch shows the unlock button for a moment; the counter restarts that moment.
@@ -315,6 +361,20 @@ fun VideoViewer(
         scale = 1f
         offset = Offset.Zero
         onZoom(false)
+    }
+
+    // Double-tap zooms glide to their end instead of jumping there.
+    fun animateZoomTo(target: Float) {
+        zoomAnimation?.cancel()
+        val fromScale = scale
+        val fromOffset = offset
+        zoomAnimation = zoomScope.launch {
+            animate(0f, 1f, animationSpec = tween(280, easing = FastOutSlowInEasing)) { t, _ ->
+                scale = fromScale + (target - fromScale) * t
+                offset = if (target > 1f) clamp(fromOffset * (1 - t), scale) else fromOffset * (1 - t)
+                onZoom(scale > 1.02f)
+            }
+        }
     }
 
     fun beginScrub() {
@@ -388,7 +448,7 @@ fun VideoViewer(
                     } else {
                         detectTapGestures(
                             onTap = { controlsVisible = !controlsVisible },
-                            onDoubleTap = { if (scale > 1.02f) reset() else setScale(2.5f) },
+                            onDoubleTap = { animateZoomTo(if (scale > 1.02f) 1f else 2.5f) },
                         )
                     }
                 }
@@ -396,6 +456,8 @@ fun VideoViewer(
                     if (isAudio || locked) return@pointerInput
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
+                        zoomAnimation?.cancel()
+                        var pinched = false
                         var moved = Offset.Zero
                         var dragging = false
                         var scrubbingNow = false
@@ -404,6 +466,7 @@ fun VideoViewer(
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Main)
                             val pressed = event.changes.count { it.pressed }
+                            if (pressed >= 2) pinched = true
                             if (pressed >= 2) {
                                 // Two fingers: pinch to zoom, and move the picture along with them.
                                 val zoom = event.calculateZoom()
@@ -445,7 +508,7 @@ fun VideoViewer(
                         } while (event.changes.any { it.pressed })
                         if (scrubbingNow) endScrub()
                         // Letting go of a pinch near normal size springs back to normal.
-                        if (scale < 1.05f) reset()
+                        if (pinched && scale < 1.05f) animateZoomTo(1f)
                     }
                 },
         )
@@ -578,7 +641,9 @@ private fun Controls(
         }
         // Position, seek bar and length.
         Row(
-            Modifier.fillMaxWidth(),
+            // The system's back swipe from the screen edge stays off over the seek bar, so a finger that drifts to the edge
+            // while seeking does not close the viewer.
+            Modifier.fillMaxWidth().systemGestureExclusion(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
         ) {

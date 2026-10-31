@@ -333,6 +333,12 @@ private struct FolderContent: View {
                         }
                         IconButton(symbol: "trash", color: ActionColors.negative, label: S.actionDelete) { confirmDeleteSelected() }
                     } else {
+                        // Favorites can be exported as a sheet of its videos' parent links and video links.
+                        if isFavoritesFolder(folder.name) {
+                            IconButton(symbol: "square.and.arrow.up", color: Brand.onSurfaceVariant, label: S.actionExportFavorites) {
+                                exportFavoriteVideos(items)
+                            }
+                        }
                         IconButton(symbol: "tag", color: Brand.onSurfaceVariant, label: S.actionTagFolder) {
                             ui.present(TagDialog(folderId: folder.id, initial: tag))
                         }
@@ -395,6 +401,18 @@ private struct FolderContent: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(S.actionViewOptions)
+    }
+
+    /// Writes the videos of Favorites to a CSV sheet in the temporary folder and opens the share sheet for it.
+    private func exportFavoriteVideos(_ items: [LibraryItem]) {
+        let rows = items.filter(\.isVideo).sorted { $0.id < $1.id }.map { (parent: originalSource($0.sourceUrl), video: $0.fileUrl ?? "") }
+        guard !rows.isEmpty else { ui.present(TransferDialog(message: S.exportFavoritesEmpty)); return }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(S.exportFavoritesFileName)
+        guard (try? LinkList.formatFavoriteVideos(rows).write(to: url, atomically: true, encoding: .utf8)) != nil else {
+            ui.present(TransferDialog(message: S.transferFailed))
+            return
+        }
+        ShareSheet.present(url)
     }
 
     private func confirmDeleteSelected() {
@@ -468,6 +486,9 @@ struct ViewerOverlay: View {
     @State private var zoomed = false
     /// The video player's touch lock: the top bar, swipe down and swipe back are off too.
     @State private var locked = false
+    /// True while a finger is on a video's progress bar. Every other gesture of the viewer (swipe down to close, the edge
+    /// swipe back) stays off until the finger lifts, however far it wanders. Swiping across the video does not set it.
+    @State private var scrubbing = false
 
     var body: some View {
         let items = store.items(inFolder: request.folderId, query: request.query, newestFirst: settings.folderNewestFirst)
@@ -475,7 +496,7 @@ struct ViewerOverlay: View {
         // The edge swipe is only for pictures: dragging a playing video across the screen made it lag, and a video
         // already has its own sideways swipe (scrubbing).
         let onVideoPage = items.indices.contains(page) && (items[page].isVideo || items[page].isAudio)
-        SwipeBackContainer(enabled: page == 0 && !zoomed && !onVideoPage && !locked, onBack: { ui.viewer = nil }) {
+        SwipeBackContainer(enabled: page == 0 && !zoomed && !onVideoPage && !locked && !scrubbing, onBack: { ui.viewer = nil }) {
             ZStack(alignment: .top) {
                 Color.black.opacity(1 - Double(min(dragY / 500, 0.7))).ignoresSafeArea()
                 if items.isEmpty {
@@ -486,18 +507,19 @@ struct ViewerOverlay: View {
                             // A video page cannot be swiped to another file (a sideways swipe scrubs), so it is shown on
                             // its own. Inside the swipeable pager, turning the screen could leave it half-way between two
                             // pages, with two videos sharing one landscape screen.
-                            ViewerPage(item: items[page], active: true, zoomed: $zoomed, locked: $locked)
+                            ViewerPage(item: items[page], active: true, zoomed: $zoomed, locked: $locked, scrubbing: $scrubbing)
                                 .ignoresSafeArea()
                         } else {
                             TabView(selection: $page) {
                                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                    ViewerPage(item: item, active: index == page, zoomed: $zoomed, locked: $locked).tag(index)
+                                    ViewerPage(item: item, active: index == page, zoomed: $zoomed, locked: $locked, scrubbing: $scrubbing).tag(index)
                                 }
                             }
                             .tabViewStyle(.page(indexDisplayMode: .never))
                             .ignoresSafeArea()
                         }
-                        if !locked { topBar(items) }
+                        // Zoomed in, the picture has the screen to itself: no title bar over it.
+                        if !locked && !zoomed { topBar(items) }
                     }
                     .offset(y: dragY)
                 }
@@ -506,7 +528,7 @@ struct ViewerOverlay: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
-                        guard !zoomed, !locked, value.translation.height > 0, abs(value.translation.height) > abs(value.translation.width) else { return }
+                        guard !zoomed, !locked, !scrubbing, value.translation.height > 0, abs(value.translation.height) > abs(value.translation.width) else { return }
                         dragY = value.translation.height
                     }
                     .onEnded { value in
@@ -519,11 +541,14 @@ struct ViewerOverlay: View {
                         }
                     }
             )
+            .onChange(of: scrubbing) { on in if on, dragY != 0 { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragY = 0 } } }
             .onChange(of: page) { _ in zoomed = false }
             .onChange(of: items.count) { count in
                 if count > 0 && page >= count { page = count - 1 }
             }
         }
+        // The viewer is full screen: the status bar steps aside while it is open.
+        .statusBarHidden(true)
         // Closing the viewer puts the screen back to portrait (a video may have turned it to landscape).
         .onDisappear { ScreenOrientation.lockPortrait() }
     }
@@ -564,14 +589,15 @@ private struct ViewerPage: View {
     let active: Bool
     @Binding var zoomed: Bool
     @Binding var locked: Bool
+    @Binding var scrubbing: Bool
 
     var body: some View {
         ZStack {
             Color.black
             if item.isImage {
-                GalleryImage(item: item, fit: true, showShimmer: false)
+                ZoomableImage(item: item, active: active, zoomed: $zoomed)
             } else if item.isVideo || item.isAudio {
-                VideoViewer(item: item, active: active, zoomed: $zoomed, locked: $locked)
+                VideoViewer(item: item, active: active, zoomed: $zoomed, locked: $locked, scrubbing: $scrubbing)
             } else {
                 OpenButton(item: item, symbol: "doc.fill")
             }

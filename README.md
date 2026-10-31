@@ -299,7 +299,7 @@ WorkManager by `Core/DownloadEngine.swift`.
 | `ios/GalleryDL/PythonShim.m`, `PythonRuntime.swift` | Embedded Python |
 | `ios/python/gdl_ios.py` | JSON entry points: `check`, `download`, `poll`, `cancel` |
 | `ios/scripts/embed_python.sh` | Build phase: copies stdlib and packages into the bundle, turns `.so` files into frameworks |
-| `ios/GalleryDL/Core/WebM/` | WebM playback: file reader, libvpx decoder, Opus sound, player (see "WebM on iOS") |
+| `ios/GalleryDL/Core/WebM/` | WebM playback: file reader, libvpx decoder, Opus and Vorbis sound, player (see "WebM on iOS") |
 | `ios/scripts/build_webm.sh` | Builds libvpx for device and simulator into `ios/Vendor/Vpx.xcframework` (run by `setup.sh`) |
 | `ios/scripts/make_ipa.sh` | Builds an unsigned `.ipa` for AltStore / AltServer |
 | `ios/requirements.txt` | Pure-Python packages only (iOS cannot load macOS binaries) |
@@ -345,10 +345,12 @@ indexes every frame. `WebMDecoder.swift` decodes VP8 and VP9 with libvpx (BSD li
 from a pinned release into `ios/Vendor/`, which is not committed) and hands out pictures. `WebMPlayer.swift` shows them
 on an `AVSampleBufferDisplayLayer` driven by a render synchronizer, so play, pause, speed and seeking use the system clock.
 The same decoder makes the library thumbnail and the live preview strip, so a `.webm` tile looks like any other.
-Opus sound is decoded with the decoder built into iOS (`WebMAudio.swift`). A file whose first picture comes late (or that starts on a non-key frame, as clips cut from a longer video can) shows its first
-usable picture from the start instead of an empty screen; without sound the timeline begins at that picture. Limits: Vorbis sound (older WebM files) is not
-decoded, so those videos play without sound; only mono and stereo Opus; 8-bit 4:2:0 video only (no VP9 10-bit or 4:4:4);
-decoding is in software, so 4K video may stutter on older phones.
+Opus sound is decoded with the decoder built into iOS; Vorbis sound (older WebM files), which iOS cannot decode, with libvorbis
+(`Core/WebM/Vorbis/`: libvorbis 1.3.7 and libogg 1.3.5, BSD licence, compiled into the app unchanged, with `VorbisShim.c` handing
+it the bare packets a WebM holds). Both are in `WebMAudio.swift`. A file whose first picture comes late (or that starts on a
+non-key frame, as clips cut from a longer video can) shows its first usable picture from the start instead of an empty screen;
+without sound the timeline begins at that picture. Limits: only mono and stereo sound; 8-bit 4:2:0 video only (no VP9 10-bit or
+4:4:4); decoding is in software, so 4K video may stutter on older phones.
 
 ### Differences from Android
 

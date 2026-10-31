@@ -1,10 +1,17 @@
 package app.gallerydl.ui.library
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.gallerydl.data.FolderSummary
 import app.gallerydl.data.LibraryItem
 import app.gallerydl.data.LibraryRepository
+import app.gallerydl.data.LinkList
+import app.gallerydl.download.originalSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import app.gallerydl.download.isFavoritesFolder
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -29,6 +36,8 @@ class LibraryViewModel(
     private val library: LibraryRepository,
     /** The Live previews setting. */
     val livePreviews: StateFlow<Boolean>,
+    /** The Preview speed setting: a multiple of normal speed. */
+    val previewSpeed: StateFlow<Float>,
     /** The persistent thumbnails shown in the folder and file grids. */
     val thumbnails: app.gallerydl.data.ThumbnailCache,
     /** The saved silent preview clips of the videos. */
@@ -129,6 +138,9 @@ class LibraryViewModel(
         if (_selection.value.isNotEmpty()) clearSelection() else closeFolder()
     }
 
+    /** Leaves the open folder (and any selection) and shows the list of folders; used when the Library tab is pressed again. */
+    fun showFolders() = closeFolder()
+
     private fun closeFolder() {
         itemQuery.value = ""
         _selection.value = emptySet()
@@ -150,6 +162,26 @@ class LibraryViewModel(
         val chosen = items.value.orEmpty().filter { it.id in ids }
         _selection.value = emptySet()
         viewModelScope.launch { onDone(library.addFavorites(chosen)) }
+    }
+
+    /**
+     * Writes the videos of the Favorites folder [folderId] to [uri] as a sheet of parent link and video link. [onDone] gets
+     * how many videos were written, or null when the file could not be written.
+     */
+    fun exportFavoriteVideos(resolver: ContentResolver, uri: Uri, folderId: Long, onDone: (Int?) -> Unit) {
+        viewModelScope.launch {
+            val rows = library.observeItems(folderId, "").first()
+                .filter { it.mimeType.startsWith("video/") }
+                .sortedBy { it.id }
+                .map { originalSource(it.sourceUrl) to it.fileUrl.orEmpty() }
+                .distinct()
+            val written = withContext(Dispatchers.IO) {
+                runCatching {
+                    resolver.openOutputStream(uri, "wt")?.use { it.write(LinkList.formatFavoriteVideos(rows).toByteArray()) } != null
+                }.getOrDefault(false)
+            }
+            onDone(if (written) rows.size else null)
+        }
     }
 
     fun deleteItem(id: Long) = viewModelScope.launch { library.deleteItems(listOf(id)) }

@@ -26,6 +26,17 @@ object LinkList {
 
     /** The file written by an export: every link once, in the order they were added. */
     fun format(urls: List<String>): String = urls.distinct().joinToString("\n", postfix = "\n")
+
+    /**
+     * The sheet written by the Favorites export, a CSV that Excel opens: one row per video, with the link it came from
+     * and the video's own link. A row repeated by two copies of the same video is written once.
+     */
+    fun formatFavoriteVideos(rows: List<Pair<String, String>>): String {
+        fun cell(text: String) = "\"" + text.replace("\"", "\"\"") + "\""
+        return rows.distinct().joinToString("\r\n", prefix = "\uFEFF\"Parent link\",\"Video link\"\r\n", postfix = "\r\n") {
+            cell(it.first) + "," + cell(it.second)
+        }
+    }
 }
 
 /** What an import did with the links it found. */

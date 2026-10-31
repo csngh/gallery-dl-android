@@ -5,17 +5,20 @@ struct QueueScreen: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var ui: UIState
     @ObservedObject var input: LinkInputModel
+    let onBack: () -> Void
 
     /// Links cleared from the Queue stay on Home and in Activity.
     private var tasks: [DownloadTask] { store.tasks.filter { $0.hiddenFromQueue != true } }
 
     var body: some View {
         VStack(spacing: 0) {
-            TopBar(title: S.navQueue) {
+            TopBar(title: S.navQueue, leading: {
+                IconButton(symbol: "chevron.left", color: Brand.onSurface, label: S.actionBack, action: onBack)
+            }, trailing: {
                 if tasks.contains(where: \.isFinished) {
                     TextPill(title: S.actionClearFinished, color: ActionColors.negative) { ui.confirmClearFinished(store: store) }
                 }
-            }
+            })
             StorageBanner(storage: app.storage)
             LinkField(input: input)
             StopAllButton(count: tasks.filter { $0.status == .queued || $0.status == .downloading }.count) { app.engine.cancelAll() }

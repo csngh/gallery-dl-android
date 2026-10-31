@@ -4,8 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -21,7 +19,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -34,6 +36,9 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Folder
@@ -75,16 +80,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.compose.ui.window.DialogProperties
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -98,6 +99,8 @@ import app.gallerydl.ui.AppViewModelProvider
 import app.gallerydl.download.PreviewWorker
 import app.gallerydl.ui.components.ConfirmDialog
 import app.gallerydl.ui.components.VideoViewer
+import app.gallerydl.ui.components.ViewerState
+import app.gallerydl.ui.components.ZoomableBox
 import app.gallerydl.ui.theme.ActionColors
 import app.gallerydl.ui.theme.Spacing
 import app.gallerydl.ui.components.EmptyState
@@ -133,7 +136,8 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
     val openFolder by viewModel.openFolder.collectAsStateWithLifecycle()
 
     val livePreviews by viewModel.livePreviews.collectAsStateWithLifecycle()
-    val previewHost = rememberPreviewHost(enabledBySetting = livePreviews)
+    val previewSpeed by viewModel.previewSpeed.collectAsStateWithLifecycle()
+    val previewHost = rememberPreviewHost(enabledBySetting = livePreviews, speed = previewSpeed)
 
     // The preview clips of the whole library are made by a background job, which carries on after the library is left;
     // the bar here shows how far it has got. Opening the library makes sure the job is running.
@@ -204,14 +208,19 @@ fun LibraryScreen(viewModel: LibraryViewModel = viewModel(factory = AppViewModel
     }
     val openIndex = viewerIndex
     val viewable = viewerItems
-    if (openIndex != null && viewable != null) {
-        Viewer(
-            items = viewable,
-            startIndex = openIndex,
-            onDismiss = { viewerIndex = null },
-            onDelete = viewModel::deleteItem,
-        )
-    }
+    // The viewer is shown by the app's root, over everything, so it is handed over rather than drawn here.
+    val viewer: (@Composable () -> Unit)? = if (openIndex != null && viewable != null) {
+        {
+            Viewer(
+                items = viewable,
+                startIndex = openIndex,
+                onDismiss = { viewerIndex = null },
+                onDelete = viewModel::deleteItem,
+            )
+        }
+    } else null
+    SideEffect { ViewerState.content = viewer }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { ViewerState.content = null } }
     }
 }
 
@@ -404,6 +413,15 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
     val columns by viewModel.folderColumns.collectAsStateWithLifecycle()
     val tag by viewModel.openFolderTag.collectAsStateWithLifecycle()
     var tagging by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val favoritesExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            viewModel.exportFavoriteVideos(context.contentResolver, uri, folder.id) { count ->
+                val text = if (count == null) context.getString(R.string.transfer_failed) else context.resources.getQuantityString(R.plurals.export_favorites_done, count, count)
+                Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(modifier) {
         TopAppBar(
@@ -450,7 +468,6 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
                     }
                     // The files in Favorites are already copies kept in the app, so there is nothing to add them to.
                     if (!isFavoritesFolder(folder.name)) {
-                        val context = LocalContext.current
                         IconButton(onClick = {
                             viewModel.addSelectedToFavorites { added ->
                                 val text = if (added > 0) context.resources.getQuantityString(R.plurals.favorites_added, added, added) else context.getString(R.string.favorites_none_added)
@@ -464,6 +481,18 @@ private fun FolderContent(viewModel: LibraryViewModel, folder: OpenFolder, modif
                         Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.action_delete))
                     }
                 } else {
+                    // Favorites can be exported as a sheet of its videos' parent links and video links.
+                    if (isFavoritesFolder(folder.name)) {
+                        IconButton(onClick = {
+                            if (items.orEmpty().none { it.mimeType.startsWith("video/") }) {
+                                Toast.makeText(context, R.string.export_favorites_empty, Toast.LENGTH_SHORT).show()
+                            } else {
+                                favoritesExport.launch(context.getString(R.string.export_favorites_file_name))
+                            }
+                        }) {
+                            Icon(Icons.Filled.FileDownload, contentDescription = stringResource(R.string.action_export_favorites))
+                        }
+                    }
                     IconButton(onClick = { tagging = true }) {
                         Icon(Icons.AutoMirrored.Filled.Label, contentDescription = stringResource(R.string.action_tag_folder))
                     }
@@ -743,23 +772,17 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
         onDispose { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !locked),
+    // Drawn over the whole app (see MainActivity) instead of in a dialog window, whose size and position differ between
+    // devices and left the library showing above and below the picture.
+    // Always handled here, even while locked: if it were only switched off, the back press would fall through to the
+    // library screen behind and close the folder (and with it the viewer).
+    androidx.activity.compose.BackHandler { if (!locked) onDismiss() }
+    Box(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            // Nothing under the viewer may be touched through it.
+            awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } }
+        },
     ) {
-        // Let the dialog window cover the status bar too, and drop the dim layer.
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            window?.let {
-                it.setDimAmount(0f)
-                it.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                // Without these the window is placed inside the area between the system bars and ends up pushed down,
-                // so its bottom (the video controls) runs off the screen.
-                val screen = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                it.setFlags(screen, screen)
-                WindowCompat.setDecorFitsSystemWindows(it, false)
-            }
-        }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             HorizontalPager(
                 pagerState,
@@ -789,11 +812,12 @@ private fun Viewer(items: List<LibraryItem>, startIndex: Int, onDismiss: () -> U
                     onDismiss = { itemToDelete = null },
                 )
             }
-            if (!locked) {
+            // Zoomed in, the picture has the screen to itself: no title bar over it.
+            if (!locked && !zoomed) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                         .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))
                         .padding(horizontal = Spacing.Xs, vertical = Spacing.Xs),
                     verticalAlignment = Alignment.CenterVertically,
@@ -859,13 +883,16 @@ private fun ViewerPage(item: LibraryItem, active: Boolean, onZoomedChange: (Bool
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (item.mimeType.isVisualMime()) {
-            GalleryImage(
-                Uri.parse(item.contentUri),
-                item.displayName,
-                Modifier.fillMaxSize(),
-                ContentScale.Fit,
-                showShimmer = false,
-            )
+            val picture: @Composable () -> Unit = {
+                GalleryImage(
+                    Uri.parse(item.contentUri),
+                    item.displayName,
+                    Modifier.fillMaxSize(),
+                    ContentScale.Fit,
+                    showShimmer = false,
+                )
+            }
+            if (item.mimeType.startsWith("image/")) ZoomableBox(onZoomedChange, content = picture) else picture()
         }
         // Videos and other files are played or opened by the user's own apps.
         if (!item.mimeType.startsWith("image/")) {

@@ -23,6 +23,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,6 +70,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = viewModel(
     val cookiesCount by viewModel.cookiesCount.collectAsStateWithLifecycle()
     val startupSound by viewModel.startupSound.collectAsStateWithLifecycle()
     val livePreviews by viewModel.livePreviews.collectAsStateWithLifecycle()
+    val previewSpeed by viewModel.previewSpeed.collectAsStateWithLifecycle()
     val cookieError by viewModel.cookieError.collectAsStateWithLifecycle()
     val recordsBytes by viewModel.recordsBytes.collectAsStateWithLifecycle()
     val thumbnailBytes by viewModel.thumbnailBytes.collectAsStateWithLifecycle()
@@ -114,6 +118,8 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = viewModel(
                     livePreviews,
                     viewModel::setLivePreviews,
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                PreviewSpeedRow(previewSpeed, viewModel::setPreviewSpeed)
             }
 
             Section(R.string.settings_location_title, R.string.settings_location_body) {
@@ -340,6 +346,35 @@ private fun Section(title: Int, body: Int, content: @Composable () -> Unit) {
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.Md), verticalArrangement = Arrangement.spacedBy(Spacing.Md)) { content() }
+        }
+    }
+}
+
+/** How fast the live previews play: a title, a sentence, and one button per speed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PreviewSpeedRow(speed: Float, onSelect: (Float) -> Unit) {
+    val options = listOf(0.75f, 1f)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.Xs)) {
+            Text(stringResource(R.string.option_preview_speed_title), style = MaterialTheme.typography.titleSmall)
+            Text(
+                stringResource(R.string.option_preview_speed_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, value ->
+                SegmentedButton(
+                    selected = value == speed,
+                    onClick = { onSelect(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    icon = {},
+                ) {
+                    Text(if (value == value.toInt().toFloat()) "${value.toInt()}×" else "$value×", maxLines = 1)
+                }
+            }
         }
     }
 }

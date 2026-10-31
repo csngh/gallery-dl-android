@@ -25,6 +25,8 @@ struct SettingsScreen: View {
                         SwitchRow(title: S.optionStartupSoundTitle, message: S.optionStartupSoundBody, isOn: $settings.startupSound)
                         Divider
                         SwitchRow(title: S.optionLivePreviewsTitle, message: S.optionLivePreviewsBody, isOn: $settings.livePreviews)
+                        Divider
+                        PreviewSpeedRow(speed: $settings.previewSpeed)
                     }
 
                     SettingsSection(title: S.settingsLocationTitle, message: S.settingsLocationBody) {
@@ -173,6 +175,34 @@ private struct SettingsSection<Content: View>: View {
 }
 
 /// A switch with its title and a sentence saying what it does. The whole row is the touch target.
+/// How fast the live previews play: a title, a sentence, and one button per speed.
+private struct PreviewSpeedRow: View {
+    @Binding var speed: Double
+    private let options: [Double] = [0.75, 1]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(S.optionPreviewSpeedTitle).textStyle(.titleSmall)
+                Text(S.optionPreviewSpeedBody).textStyle(.bodySmall, color: Brand.onSurfaceVariant).multilineTextAlignment(.leading)
+            }
+            HStack(spacing: Spacing.xs) {
+                ForEach(options, id: \.self) { value in
+                    Button { speed = value } label: {
+                        Text((value == value.rounded() ? String(Int(value)) : String(format: "%g", value)) + "×")
+                            .textStyle(.labelLarge, color: value == speed ? .white : Brand.onSurfaceVariant)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(Capsule().fill(value == speed ? Brand.primary : Color.white.opacity(0.08)))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(value == speed ? .isSelected : [])
+                }
+            }
+        }
+    }
+}
+
 private struct SwitchRow: View {
     let title: String
     let message: String

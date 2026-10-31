@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import app.gallerydl.download.GalleryDlOptions
 import androidx.datastore.preferences.core.intPreferencesKey
 import java.io.File
@@ -112,6 +113,11 @@ class SettingsRepository(private val context: Context) {
     val livePreviews: Flow<Boolean> = context.settingsStore.data.map { it[LIVE_PREVIEWS] ?: true }
 
     suspend fun setLivePreviews(on: Boolean) = context.settingsStore.edit { it[LIVE_PREVIEWS] = on }
+
+    /** How fast the live previews play, as a multiple of normal speed. 1 by default. */
+    val previewSpeed: Flow<Float> = context.settingsStore.data.map { it[PREVIEW_SPEED] ?: 1f }
+
+    suspend fun setPreviewSpeed(speed: Float) = context.settingsStore.edit { it[PREVIEW_SPEED] = speed }
 
     /** How many cookies the imported cookies.txt holds; 0 when none is imported. */
     val cookiesCount: Flow<Int> = context.settingsStore.data.map { it[COOKIES_COUNT] ?: 0 }
@@ -214,6 +220,7 @@ class SettingsRepository(private val context: Context) {
         val COOKIES_ON = booleanPreferencesKey("opt_cookies_on")
         val STARTUP_SOUND = booleanPreferencesKey("startup_sound")
         val LIVE_PREVIEWS = booleanPreferencesKey("live_previews")
+        val PREVIEW_SPEED = floatPreferencesKey("preview_speed")
         val FOLDER_COLUMNS = intPreferencesKey("folder_columns")
         val LIBRARY_COLUMNS = intPreferencesKey("library_columns")
         val FOLDER_NEWEST_FIRST = booleanPreferencesKey("folder_newest_first")

@@ -166,6 +166,18 @@ class LibraryRepository(
     suspend fun fileUrlsFor(sourceUrl: String) = dao.fileUrlsFor(sourceUrl)
 
     /**
+     * True when this link already has a file of this name in this folder. A last check before saving: whatever made the
+     * download fetch a known file again (an address that changes on every run, say), the same video is never saved twice.
+     */
+    suspend fun hasFileIn(sourceUrl: String, name: String, folder: String): Boolean {
+        val folderId = dao.folderByName(folder)?.id ?: return false
+        val wanted = Normalizer.normalize(name, Normalizer.Form.NFC)
+        return dao.itemsOfLink(sourceUrl).any {
+            it.folderId == folderId && Normalizer.normalize(it.displayName, Normalizer.Form.NFC) == wanted
+        }
+    }
+
+    /**
      * A file the link already had is not fetched again: it gets the address it has now and, if it was saved by an earlier
      * download of the same link (the link was removed and added again), it now belongs to this one. Returns true when
      * it was handed over, so the download can count it.

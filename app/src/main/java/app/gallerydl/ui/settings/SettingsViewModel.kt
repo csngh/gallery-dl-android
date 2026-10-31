@@ -33,6 +33,7 @@ class SettingsViewModel(
     val cookiesCount: StateFlow<Int>,
     val startupSound: StateFlow<Boolean>,
     val livePreviews: StateFlow<Boolean>,
+    val previewSpeed: StateFlow<Float>,
     private val thumbnails: app.gallerydl.data.ThumbnailCache,
     private val previewStrips: app.gallerydl.data.PreviewStripCache,
 ) : ViewModel() {
@@ -78,6 +79,7 @@ class SettingsViewModel(
 
     fun setStartupSound(on: Boolean) = viewModelScope.launch { settings.setStartupSound(on) }
     fun setLivePreviews(on: Boolean) = viewModelScope.launch { settings.setLivePreviews(on) }
+    fun setPreviewSpeed(speed: Float) = viewModelScope.launch { settings.setPreviewSpeed(speed) }
     fun setApiRest(on: Boolean) = viewModelScope.launch { settings.setApiRest(on) }
     fun setSleepRequestEnabled(on: Boolean) = viewModelScope.launch { settings.setSleepRequestEnabled(on) }
     fun setSleepRequest(value: String) = viewModelScope.launch { settings.setSleepRequest(value) }

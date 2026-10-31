@@ -2,18 +2,40 @@ import AudioToolbox
 import AVFoundation
 import CoreMedia
 
-/// Decodes the Opus sound of a WebM file with the decoder that comes with iOS, into 32-bit float samples at 48 kHz.
-/// Mono and stereo only. Vorbis, the older WebM sound format, is not handled here.
+/// Decodes the sound of a WebM file into 32-bit float samples. Opus goes through the decoder that comes with iOS, at 48 kHz;
+/// Vorbis, the older WebM sound format, which iOS cannot decode, goes through libvorbis (see `VorbisShim`). Mono and stereo only.
 final class WebMAudioDecoder {
     let channels: Int
+    private(set) var sampleRate = 48_000.0
     private var converter: AudioConverterRef?
-    private let format: AudioStreamBasicDescription
+    private var vorbis: OpaquePointer?
+    /// Where the next Vorbis sound belongs on the timeline. Vorbis packets overlap, so their samples follow one another
+    /// instead of each taking its packet's own time; it starts again after every seek.
+    private var vorbisTime: Double?
     private var description: CMAudioFormatDescription?
     private static let noMoreInput: OSStatus = 0x6E6F6D6F
     /// An Opus packet is at most 120 ms, which is 5760 frames at 48 kHz.
     private let maxFrames = 5760
 
     init?(track: WebMAudioTrack) {
+        if track.codec == "A_VORBIS" {
+            var count: Int32 = 0
+            var rate = 0
+            let decoder: OpaquePointer? = track.codecPrivate.withUnsafeBytes { raw in
+                guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return nil }
+                return vorbisdec_create(base, raw.count, &count, &rate)
+            }
+            guard let decoder else { return nil }
+            guard count == 1 || count == 2, rate > 0, let known = Self.describe(channels: Int(count), rate: Double(rate)) else {
+                vorbisdec_destroy(decoder)
+                return nil
+            }
+            vorbis = decoder
+            channels = Int(count)
+            sampleRate = Double(rate)
+            description = known
+            return
+        }
         guard track.codec == "A_OPUS", track.channels == 1 || track.channels == 2 else { return nil }
         channels = track.channels
         var input = AudioStreamBasicDescription(mSampleRate: 48_000, mFormatID: kAudioFormatOpus, mFormatFlags: 0, mBytesPerPacket: 0,
@@ -27,16 +49,35 @@ final class WebMAudioDecoder {
         var made: AudioConverterRef?
         guard AudioConverterNew(&input, &output, &made) == noErr, let made else { return nil }
         converter = made
-        format = output
         CMAudioFormatDescriptionCreate(allocator: nil, asbd: &output, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil,
                                        extensions: nil, formatDescriptionOut: &description)
         guard description != nil else { return nil }
     }
 
-    deinit { if let converter { AudioConverterDispose(converter) } }
+    deinit {
+        if let converter { AudioConverterDispose(converter) }
+        if let vorbis { vorbisdec_destroy(vorbis) }
+    }
+
+    /// The format of the 32-bit float samples this decoder hands out.
+    private static func describe(channels: Int, rate: Double) -> CMAudioFormatDescription? {
+        var asbd = AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM,
+                                               mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+                                               mBytesPerPacket: UInt32(4 * channels), mFramesPerPacket: 1,
+                                               mBytesPerFrame: UInt32(4 * channels), mChannelsPerFrame: UInt32(channels),
+                                               mBitsPerChannel: 32, mReserved: 0)
+        var made: CMAudioFormatDescription?
+        CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil,
+                                       extensions: nil, formatDescriptionOut: &made)
+        return made
+    }
 
     /// Forgets what came before, for after a seek.
-    func reset() { if let converter { AudioConverterReset(converter) } }
+    func reset() {
+        if let converter { AudioConverterReset(converter) }
+        if let vorbis { vorbisdec_reset(vorbis) }
+        vorbisTime = nil
+    }
 
     private final class Input {
         var pointer: UnsafeMutableRawPointer
@@ -50,6 +91,7 @@ final class WebMAudioDecoder {
 
     /// Decodes one packet into a sample buffer shown at `time`.
     func decode(_ bytes: UnsafeBufferPointer<UInt8>, time: Double) -> CMSampleBuffer? {
+        if vorbis != nil { return decodeVorbis(bytes, time: time) }
         guard let converter, let base = bytes.baseAddress, let description else { return nil }
         let input = Input(pointer: UnsafeMutableRawPointer(mutating: base), size: bytes.count)
         let callback: AudioConverterComplexInputDataProc = { _, packets, buffers, descriptions, user in
@@ -77,15 +119,38 @@ final class WebMAudioDecoder {
         let status = withExtendedLifetime(input) { AudioConverterFillComplexBuffer(converter, callback, Unmanaged.passUnretained(input).toOpaque(), &frames, &out, nil) }
         guard status == noErr || status == Self.noMoreInput, frames > 0 else { return nil }
 
-        let length = Int(frames) * frameBytes
+        return Self.sample(memory, frames: Int(frames), frameBytes: frameBytes, rate: 48_000, format: description, time: time)
+    }
+
+    /// A Vorbis block is at most 8192 samples long and gives back at most half of that per packet.
+    private let vorbisFrames = 4096
+
+    private func decodeVorbis(_ bytes: UnsafeBufferPointer<UInt8>, time: Double) -> CMSampleBuffer? {
+        guard let vorbis, let base = bytes.baseAddress, let description else { return nil }
+        let capacity = vorbisFrames * channels * 4
+        let memory = UnsafeMutableRawPointer.allocate(byteCount: capacity, alignment: 16)
+        defer { memory.deallocate() }
+        let frames = Int(vorbisdec_decode(vorbis, base, bytes.count, memory.assumingMemoryBound(to: Float.self), Int32(vorbisFrames)))
+        guard frames > 0 else { return nil }
+        // After a seek the first sound starts at that packet; from then on each piece follows the one before. If the two drift
+        // apart (a gap in the file), the packet's own time wins.
+        var at = vorbisTime ?? time
+        if abs(at - time) > 0.25 { at = time }
+        vorbisTime = at + Double(frames) / sampleRate
+        return Self.sample(memory, frames: frames, frameBytes: 4 * channels, rate: sampleRate, format: description, time: at)
+    }
+
+    private static func sample(_ memory: UnsafeMutableRawPointer, frames: Int, frameBytes: Int, rate: Double,
+                               format: CMAudioFormatDescription, time: Double) -> CMSampleBuffer? {
+        let length = frames * frameBytes
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: length, blockAllocator: nil, customBlockSource: nil,
                                                  offsetToData: 0, dataLength: length, flags: 0, blockBufferOut: &block) == noErr, let block,
               CMBlockBufferAssureBlockMemory(block) == noErr,
               CMBlockBufferReplaceDataBytes(with: memory, blockBuffer: block, offsetIntoDestination: 0, dataLength: length) == noErr else { return nil }
         var sample: CMSampleBuffer?
-        guard CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: block, formatDescription: description, sampleCount: CMItemCount(frames),
-                                                                   presentationTimeStamp: CMTime(seconds: time, preferredTimescale: 48_000),
+        guard CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: CMItemCount(frames),
+                                                                   presentationTimeStamp: CMTime(seconds: time, preferredTimescale: CMTimeScale(rate)),
                                                                    packetDescriptions: nil, sampleBufferOut: &sample) == noErr else { return nil }
         return sample
     }

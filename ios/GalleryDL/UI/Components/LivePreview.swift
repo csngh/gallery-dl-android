@@ -19,6 +19,8 @@ final class PreviewHost: ObservableObject {
     /// The order tiles first asked in, oldest first, so that when there are too many the newest ones win.
     private var order: [String] = []
     @Published var enabledBySetting = true
+    /// The Preview speed setting, as a multiple of normal speed. Read by every playing tile.
+    static var speed = 1.0
     @Published var appActive = true
     @Published var viewerOpen = false
     @Published private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -252,7 +254,7 @@ final class StripController: ObservableObject {
     fileprivate func advance(by seconds: Double) {
         guard let id = currentID, let strip = loaded[id] else { return }
         elapsed += seconds
-        let index = Int(elapsed * strip.fps)
+        let index = Int(elapsed * strip.fps * PreviewHost.speed)
         if index >= strip.frameCount {
             pickNext(blend: true)
             return

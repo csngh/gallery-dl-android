@@ -36,6 +36,15 @@ final class WebMPlayer {
     private var held: CMSampleBuffer?
     private var servedSeek = 0
     private var audioIndex = 0
+    /// How many times the picture and the sound have gone round again. Each pass is queued with its times moved on by one
+    /// whole length, so the clock never has to jump back and a loop has no gap. Touched only on `queue`.
+    private var videoLoops = 0
+    private var audioLoops = 0
+
+    /// Whether the video plays again from the start when it ends. Read from any thread, set through `setLooping`.
+    private let loopFlag = NSLock()
+    private var loopingValue = false
+    private var looping: Bool { loopFlag.lock(); defer { loopFlag.unlock() }; return loopingValue }
 
     /// Bumped on every seek, from any thread, so work for a position that has already been replaced can be dropped.
     private let latestSeek = NSLock()
@@ -52,7 +61,11 @@ final class WebMPlayer {
         file.setListeners(
             // More frames are known: whatever was waiting for them carries on.
             grow: { [weak self] in self?.queue.async { self?.feed(); self?.feedAudio() } },
-            complete: { [weak self] in DispatchQueue.main.async { self?.onIndexComplete?() } }
+            complete: { [weak self] in
+                // The length is final now, so a loop that was waiting for it can queue the next pass.
+                self?.queue.async { self?.feed(); self?.feedAudio() }
+                DispatchQueue.main.async { self?.onIndexComplete?() }
+            }
         )
         if audioDecoder != nil {
             synchronizer.addRenderer(audioRenderer)
@@ -112,7 +125,28 @@ final class WebMPlayer {
     }
 
     var isPlaying: Bool { synchronizer.rate > 0 }
-    var currentTime: Double { max(0, synchronizer.currentTime().seconds) }
+    /// Where in the video the clock is. While looping the clock keeps counting through every pass, so this is the position
+    /// within the current pass.
+    var currentTime: Double { wrapped(max(0, synchronizer.currentTime().seconds)) }
+
+    private func wrapped(_ clock: Double) -> Double {
+        let end = endTime
+        guard looping, end.isFinite, end > 0 else { return clock }
+        return clock.truncatingRemainder(dividingBy: end)
+    }
+
+    /// Which pass the clock time `clock` falls in.
+    private func pass(at clock: Double) -> Int {
+        let end = endTime
+        guard looping, end.isFinite, end > 0 else { return 0 }
+        return Int(clock / end)
+    }
+
+    /// Turns looping on or off. A loop is seamless: the next pass is queued while the last one is still playing.
+    func setLooping(_ on: Bool) {
+        loopFlag.lock(); loopingValue = on; loopFlag.unlock()
+        queue.async { [self] in feed(); feedAudio() }
+    }
 
     // These go through the same queue as seeks, so a play that follows a seek cannot be undone by the seek.
     func play(rate: Float) { queue.async { [self] in synchronizer.rate = rate } }
@@ -121,8 +155,9 @@ final class WebMPlayer {
 
     /// Calls `body` on the main queue about every `interval` seconds while the clock runs.
     func observeTime(every interval: Double, _ body: @escaping (Double) -> Void) {
-        timeObserver = synchronizer.addPeriodicTimeObserver(forInterval: CMTime(seconds: interval, preferredTimescale: 600), queue: .main) { time in
-            if time.seconds.isFinite { body(time.seconds) }
+        timeObserver = synchronizer.addPeriodicTimeObserver(forInterval: CMTime(seconds: interval, preferredTimescale: 600), queue: .main) { [weak self] time in
+            guard let self else { return }
+            if time.seconds.isFinite { body(self.wrapped(time.seconds)) }
         }
     }
 
@@ -146,6 +181,8 @@ final class WebMPlayer {
                 audioIndex = file.audioIndex(at: target)
             }
             held = nil
+            videoLoops = 0
+            audioLoops = 0
             nextIndex = file.keyFrameIndex(atOrBefore: target + origin)
             seekTarget = target
             synchronizer.setRate(rate, time: CMTime(seconds: target, preferredTimescale: 600))
@@ -186,7 +223,9 @@ final class WebMPlayer {
         // shows until it is flushed, so it is flushed here and decoding carries on from the next frame.
         if layer.status == .failed || layer.requiresFlushToResumeDecoding {
             layer.flush()
-            let target = seekTarget ?? currentTime
+            let clock = max(0, synchronizer.currentTime().seconds)
+            let target = seekTarget ?? wrapped(clock)
+            videoLoops = pass(at: clock)
             nextIndex = file.keyFrameIndex(atOrBefore: target + origin)
             seekTarget = target
             held = nil
@@ -197,15 +236,21 @@ final class WebMPlayer {
             guard nextIndex < file.videoCount else {
                 // Past the last frame: whatever was held back for a seek near the end is shown now. While the file is still
                 // being read, the next frames are simply not known yet, and the reader calls this again as they are.
-                if file.isIndexed, let held { layer.enqueue(held); self.held = nil }
-                return
+                guard file.isIndexed else { return }
+                if let held { layer.enqueue(held); self.held = nil }
+                // Looping: carry straight on with the start of the next pass, so the picture never waits for the end.
+                guard looping, file.videoCount > 0, endTime.isFinite else { return }
+                videoLoops += 1
+                nextIndex = file.keyFrameIndex(atOrBefore: origin)
+                continue
             }
             let index = nextIndex
             nextIndex += 1
             // The first picture is shown from the very start, even when the file's own clock begins later, so the screen
             // is never empty while the clock runs up to it.
             let time = index == firstShown ? 0 : file.video(index).time - origin
-            guard let buffer = decoder.decode(index), let sample = Self.sample(buffer, time: time) else { continue }
+            let stamp = time + Double(videoLoops) * (videoLoops > 0 ? endTime : 0)
+            guard let buffer = decoder.decode(index), let sample = Self.sample(buffer, time: stamp) else { continue }
             if let target = seekTarget {
                 // Frames before the seek target are decoded but kept back, except the last of them, which is what the
                 // target moment actually looks like.
@@ -222,10 +267,19 @@ final class WebMPlayer {
         guard let audioDecoder else { return }
         while audioRenderer.isReadyForMoreMediaData {
             if servedSeek != readLatestSeek() { return }
-            guard audioIndex < file.audioCount else { return }
+            // Looping: the sound goes round with the picture. A sound track longer than the picture is cut where the picture ends.
+            let loops = looping && file.isIndexed && file.audioCount > 0 && endTime.isFinite
+            if audioIndex >= file.audioCount || (loops && file.audio(audioIndex).time >= endTime) {
+                guard loops else { return }
+                audioLoops += 1
+                audioIndex = 0
+                audioDecoder.reset()
+                continue
+            }
             let packet = file.audio(audioIndex)
             audioIndex += 1
-            if let sample = audioDecoder.decode(file.bytes(of: packet), time: packet.time) { audioRenderer.enqueue(sample) }
+            let stamp = packet.time + (audioLoops > 0 ? Double(audioLoops) * endTime : 0)
+            if let sample = audioDecoder.decode(file.bytes(of: packet), time: stamp) { audioRenderer.enqueue(sample) }
         }
     }
 

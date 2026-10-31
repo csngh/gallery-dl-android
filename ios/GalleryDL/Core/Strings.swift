@@ -22,8 +22,10 @@ enum S {
     static func soundUnsupported(_ format: String) -> String { "No sound: \(format) is not supported" }
     static let soundFailed = "No sound: the audio output failed"
     static let actionRenew = "Renew all links"
-    static let actionLinksMenu = "Export or import links", actionExportLinks = "Export links", actionImportLinks = "Import links"
+    static let actionLinksMenu = "More options", actionExportLinks = "Export links", actionImportLinks = "Import links"
     static let exportEmpty = "There are no links to export yet."
+    static let actionExportFavorites = "Export video links", exportFavoritesFileName = "favorite-videos.csv"
+    static let exportFavoritesEmpty = "There are no favorite videos to export yet."
     static let transferFailed = "Unable to use this file. Please try another one."
     static let importTitle = "Importing links", importDoneTitle = "Import finished"
     static let importNone = "No links were found in this file. It should have one link per line."
@@ -204,6 +206,8 @@ enum S {
     static let previewsPreparing = "Preparing previews"
     static func previewsProgress(_ done: Int, _ total: Int) -> String { "\(done) of \(total)" }
     static let optionLivePreviewsTitle = "Live previews"
+    static let optionPreviewSpeedTitle = "Preview speed"
+    static let optionPreviewSpeedBody = "How fast the live previews play in the library. Slower is easier to follow and lighter on the battery."
     static let optionLivePreviewsBody = "Plays a silent, looping preview of each video in the library, from a short clip that is saved once for every video. It pauses when Low Power Mode or Reduce Motion is on."
 
     static let notifComplete = "Download complete"

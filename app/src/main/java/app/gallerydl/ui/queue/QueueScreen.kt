@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -81,7 +82,7 @@ import app.gallerydl.ui.components.StopAllButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QueueScreen(viewModel: QueueViewModel = viewModel(factory = AppViewModelProvider.Factory)) {
+fun QueueScreen(onBack: () -> Unit, viewModel: QueueViewModel = viewModel(factory = AppViewModelProvider.Factory)) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val input by viewModel.input.collectAsStateWithLifecycle()
     val hasFinished = tasks?.any { it.status.isFinished() } == true
@@ -92,6 +93,11 @@ fun QueueScreen(viewModel: QueueViewModel = viewModel(factory = AppViewModelProv
     Column(Modifier.readableWidth()) {
         TopAppBar(
             title = { ScreenTitle(stringResource(R.string.nav_queue)) },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                }
+            },
             actions = {
                 if (hasFinished) {
                     TextButton(
